@@ -9,7 +9,6 @@ using NAudio.Dsp;  // Include the DSP namespace for FFT
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.Windows.Forms;
-//using SharpDX.Direct2D1;
 using Svg;
 
 public class Vizualizationizer : Game
@@ -26,11 +25,10 @@ public class Vizualizationizer : Game
     private int sidebarWidth = 250;
     private Texture2D sliderTexture;
     private Vector2 sliderPosition, sliderPosition2, sliderPosition3;
-    private float sliderValue, sliderValue2 = 0.5f, sliderValue3 = 0.5f;
-    //private int fftBinCount = 256; // Default bin count, assuming power of 2
+    private float sliderValue = 0.5f, sliderValue2 = 0.5f, sliderValue3 = 0.5f;
     private float frequencyCutoff = 0.5f; // Default cutoff at half of the frequency range
-    private float minScaleFactor = 0.0001f;
-    private float maxScaleFactor = 0.01f;
+    private float minScaleFactor = 0.01f;
+    private float maxScaleFactor = 1f;
     private TimeSpan lastUpdate = TimeSpan.Zero;
     private TimeSpan lastButtonPressTime;
     private const double UpdateThreshold = 0.1; // seconds
@@ -58,7 +56,9 @@ public class Vizualizationizer : Game
     private Texture2D colorButtonTexture;
     private Texture2D svgTexture;
     private Rectangle svgButtonRect;
-
+    private Rectangle[] modeButtons = new Rectangle[4];
+    private Texture2D modeButtonTexture;
+    private string[] modeLabels = { "Standard", "MirroredMiddle", "MirroredCorners", "Radial" };
     public Vizualizationizer()
     {
         graphics = new GraphicsDeviceManager(this);
@@ -115,6 +115,19 @@ public class Vizualizationizer : Game
 
         colorButtonTexture = CreateColorTexture(buttonSize, buttonSize, Color.White);  // White used as a mask for color
 
+        int modeButtonWidth = 60;
+        int modeButtonHeight = 30;
+        int modeStartY = 770; // Adjust this value based on your actual layout
+        int modePadding = 25;
+
+        modeButtonTexture = CreateColorTexture(modeButtonWidth, modeButtonHeight, Color.White); // You can customize this color or texture later
+
+        for (int i = 0; i < modeButtons.Length; i++)
+        {
+            int row = i / 2; // Arrange in two rows
+            int col = i % 2; // Two columns
+            modeButtons[i] = new Rectangle(40 + col * (modeButtonWidth + modePadding), modeStartY + row * (modeButtonHeight + modePadding), modeButtonWidth, modeButtonHeight);
+        }
         visualizer = new AudioVisualizer(GraphicsDevice, spriteBatch)
         {
             Colors = colors,
@@ -235,15 +248,18 @@ public class Vizualizationizer : Game
         if (sidebarVisible)
         {
             // Handle slider interactions
-            HandleSlider(mouse, sliderPosition, sliderTexture, ref sliderValue, 0f, 1f, v => {
-                float scale = minScaleFactor + (maxScaleFactor - minScaleFactor) * v;
-                visualizer.UpdateScaleFactor(scale);
+            HandleSlider(mouse, sliderPosition, sliderTexture, ref sliderValue, 0.1f, 1f, v =>
+            {
+                float scaledValue = 0.25f + (100f - 0.25f) * v;  // Assuming v is between 0 and 1
+                visualizer.UpdateScaleFactor(scaledValue);
+                Debug.WriteLine($"Adjusted Scale Factor: {scaledValue}");
+                Debug.WriteLine($"Scale factor set to {v}");  // Add this to confirm the scale factor is being updated
             });
-            HandleSlider(mouse, sliderPosition2, sliderTexture2, ref sliderValue2, 0f, 1f, v => {
+            HandleSlider(mouse, sliderPosition2, sliderTexture2, ref sliderValue2, 0.1f, 1f, v => {
                 frequencyCutoff = v;
                 visualizer.UpdateFrequencyCutoff(frequencyCutoff);
             });
-            HandleSlider(mouse, sliderPosition3, sliderTexture3, ref sliderValue3, 0f, 1f, v =>
+            HandleSlider(mouse, sliderPosition3, sliderTexture3, ref sliderValue3, 0.1f, 1f, v =>
             {
                 // Map from 0.0-1.0 range to 6-10, representing 2^6=64 to 2^10=1024
                 int exponent = 6 + (int)((10 - 6) * v);
@@ -257,6 +273,14 @@ public class Vizualizationizer : Game
 
             // Handle color button interactions
             HandleColorButtonInteraction(mouse, gameTime);
+            for (int i = 0; i < modeButtons.Length; i++)
+            {
+                if (modeButtons[i].Contains(mouse.Position) && mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed && lastButtonPressTime + TimeSpan.FromMilliseconds(250) < gameTime.TotalGameTime)
+                {
+                    visualizer.Mode = (AudioVisualizer.VisualizationMode)i;
+                    lastButtonPressTime = gameTime.TotalGameTime;
+                }
+            }
         }
         if (sidebarVisible && svgButtonRect.Contains(mouse.X, mouse.Y) && mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed && lastButtonPressTime + TimeSpan.FromMilliseconds(250) < gameTime.TotalGameTime)
         {
@@ -268,6 +292,10 @@ public class Vizualizationizer : Game
         if (keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.F11))
         {
             graphics.ToggleFullScreen();
+        }
+        if (keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Escape))
+        {
+            Exit();  // This will close the application
         }
         if (svgTexture != null)
         {
@@ -336,7 +364,11 @@ public class Vizualizationizer : Game
             // Draw the close button and svg load button
             spriteBatch.Draw(closeButtonTexture, closeButtonRect, Color.White);
             spriteBatch.Draw(closeButtonTexture, svgButtonRect, Color.White); // Reuse the close button texture or create a new one
-
+            for (int i = 0; i < modeButtons.Length; i++)
+            {
+                spriteBatch.Draw(modeButtonTexture, modeButtons[i], Color.White);
+                // Optionally, draw labels here if you have a sprite font loaded
+            }
             // Draw the sliders
             spriteBatch.Draw(sliderTexture, new Rectangle(sliderPosition.ToPoint(), new Point((int)(sliderTexture.Width * sliderValue), sliderTexture.Height)), Color.White);
             spriteBatch.Draw(sliderTexture2, new Rectangle(sliderPosition2.ToPoint(), new Point((int)(sliderTexture2.Width * sliderValue2), sliderTexture2.Height)), Color.White);
@@ -417,7 +449,7 @@ public class AudioManager
             waveIn = new WaveInEvent
             {
                 DeviceNumber = deviceNumber,
-                WaveFormat = new WaveFormat(44100, 1)  // Mono channel, CD quality
+                WaveFormat = new WaveFormat(28050, 1)  // Mono channel, CD quality
             };
 
             waveIn.DataAvailable += OnDataAvailable;
@@ -496,6 +528,7 @@ public class AudioVisualizer
     public List<Color> ActiveColors { get; private set; } = new List<Color>();
     public Color[] Colors { get; set; }  // Array of colors
     public bool[] ColorToggles { get; set; }  // Array of color toggles
+    private float scaleFactor = 1.0f;  // Default scale factor
     public void UpdateActiveColors(Color[] allColors, bool[] toggles)
     {
         ActiveColors.Clear();
@@ -505,6 +538,14 @@ public class AudioVisualizer
                 ActiveColors.Add(allColors[i]);
         }
     }
+    public enum VisualizationMode
+    {
+        Standard,
+        MirroredMiddle,
+        MirroredCorners,
+        Radial
+    }
+    public VisualizationMode Mode { get; set; } = VisualizationMode.Radial;
     public AudioVisualizer(GraphicsDevice graphicsDevice, Microsoft.Xna.Framework.Graphics.SpriteBatch spriteBatch)
     {
         this.graphicsDevice = graphicsDevice;
@@ -513,9 +554,9 @@ public class AudioVisualizer
         pixel.SetData(new Color[] { Color.White });  // White pixel for drawing
     }
 
-    public void UpdateScaleFactor(float scaleFactor)
+    public void UpdateScaleFactor(float newScaleFactor)
     {
-        // This would adjust how the visualization scaling should work, placeholder for now
+        scaleFactor = MathHelper.Clamp(newScaleFactor, 0.25f, 100f);
     }
 
     public void UpdateFrequencyData(float[] data)
@@ -534,6 +575,24 @@ public class AudioVisualizer
     }
 
     public void Draw(float[] frequencyData)
+    {
+        switch (Mode)
+        {
+            case VisualizationMode.Standard:
+                DrawStandard(frequencyData);
+                break;
+            case VisualizationMode.MirroredMiddle:
+                DrawMirroredMiddle(frequencyData);
+                break;
+            case VisualizationMode.MirroredCorners:
+                DrawMirroredCorners(frequencyData);
+                break;
+            case VisualizationMode.Radial:
+                DrawRadial(frequencyData);
+                break;
+        }
+    }
+    private void DrawStandard(float[] frequencyData)
     {
         if (frequencyData == null || frequencyData.Length == 0)
         {
@@ -554,9 +613,9 @@ public class AudioVisualizer
         spriteBatch.Begin();
         for (int i = 0; i < maxIndex && i < frequencyData.Length; i++)
         {
-            float magnitude = frequencyData[i];
+            float magnitude = frequencyData[i] * scaleFactor; //apply scale factor
             //Debug.WriteLine($"Magnitude[{i}]: {magnitude}");  // Output magnitude to debug
-            float normalizedMagnitude = Math.Min(1f, magnitude * 10); // Scale magnitude to a max of 1
+            float normalizedMagnitude = Math.Min(magnitude,1.0f); // Scale magnitude to a max of 1
             float barHeight = normalizedMagnitude * maxBarHeight;
             Color color = ActiveColors[i % ActiveColors.Count];
             spriteBatch.Draw(pixel, new Rectangle(i * barWidth, (int)(graphicsDevice.Viewport.Height - barHeight), barWidth, (int)barHeight), color);
@@ -568,4 +627,176 @@ public class AudioVisualizer
         spriteBatch.End();
     }
 
+    private void DrawMirroredMiddle(float[] frequencyData)
+    {
+        if (frequencyData == null || frequencyData.Length == 0)
+        {
+            Debug.WriteLine("No frequency data to draw.");
+            return;
+        }
+        int enabledColorCount = ColorToggles.Count(t => t);
+        if (enabledColorCount == 0)
+            return; // Skip drawing if no colors are enabled
+        Debug.WriteLine($"Drawing {frequencyData.Length} bars with cutoff at {frequencyCutoff}");
+
+        int viewportWidth = graphicsDevice.Viewport.Width;
+        int barWidth = Math.Max(10, viewportWidth / Math.Max(1, fftBinCount));
+        int maxIndex = (int)(frequencyData.Length * frequencyCutoff);
+        float maxBarHeight = graphicsDevice.Viewport.Height / 2; // Half the height for mirrored effect
+
+        spriteBatch.Begin();
+        for (int i = 0; i < maxIndex && i < frequencyData.Length; i++)
+        {
+            float magnitude = frequencyData[i] * scaleFactor; // Apply scale factor
+            float normalizedMagnitude = Math.Min(magnitude, 1.0f); // Clamp magnitude to a max of 1
+            float barHeight = normalizedMagnitude * maxBarHeight;
+
+            Color color = ActiveColors[i % ActiveColors.Count];
+            int topBarY = (int)(maxBarHeight - barHeight); // Start point for top bars
+            int bottomBarY = (int)(maxBarHeight + barHeight); // Start point for bottom bars
+
+            // Draw bottom bars
+            spriteBatch.Draw(pixel, new Rectangle(i * barWidth, bottomBarY, barWidth, (int)barHeight), color);
+
+            // Draw top bars mirrored
+            spriteBatch.Draw(pixel, new Rectangle(i * barWidth, topBarY, barWidth, (int)barHeight), color);
+
+            // Optional: Draw using different color settings if toggled
+            if (ColorToggles[i % Colors.Length])
+            {
+                spriteBatch.Draw(pixel, new Rectangle(i * barWidth, bottomBarY, barWidth, (int)barHeight), Colors[i % Colors.Length]);
+                spriteBatch.Draw(pixel, new Rectangle(i * barWidth, topBarY, barWidth, (int)barHeight), Colors[i % Colors.Length]);
+            }
+        }
+        spriteBatch.End();
+    }
+
+    private void DrawMirroredCorners(float[] frequencyData)
+    {
+        if (frequencyData == null || frequencyData.Length == 0)
+        {
+            Debug.WriteLine("No frequency data to draw.");
+            return;
+        }
+        int enabledColorCount = ColorToggles.Count(t => t);
+        if (enabledColorCount == 0)
+            return; // Skip drawing if no colors are enabled
+        Debug.WriteLine($"Drawing {frequencyData.Length} bars with cutoff at {frequencyCutoff}");
+
+        int viewportWidth = 1 + graphicsDevice.Viewport.Width;
+        int viewportHeight = graphicsDevice.Viewport.Height;
+        int totalBars = fftBinCount; // Total bars on one side
+        int barWidth = Math.Max(10, viewportWidth / Math.Max(1, totalBars * 2)); // Adjust for mirroring from center
+        int maxIndex = (int)(frequencyData.Length * frequencyCutoff + 1);
+        float maxBarHeight = viewportHeight / 2; // Use half the viewport height for top and bottom
+
+        spriteBatch.Begin();
+        for (int i = 0; i < maxIndex; i++)
+        {
+            float magnitude = frequencyData[i] * scaleFactor; // Apply scale factor
+            float normalizedMagnitude = Math.Min(magnitude, 1.0f); // Clamp magnitude to a max of 1
+            float barHeight = normalizedMagnitude * maxBarHeight;
+
+            Color color = ActiveColors[i % ActiveColors.Count];
+
+            // Calculate positions so that they remain anchored at the corners
+            int leftX = (viewportWidth / 2) - ((totalBars - i) * barWidth);
+            int rightX = (viewportWidth / 2) + ((totalBars - i - 1) * barWidth);
+
+            // Draw bars on the bottom from the corners towards the center
+            spriteBatch.Draw(pixel, new Rectangle(leftX, viewportHeight - (int)barHeight, barWidth, (int)barHeight), color);
+            spriteBatch.Draw(pixel, new Rectangle(rightX, viewportHeight - (int)barHeight, barWidth, (int)barHeight), color);
+
+            // Draw mirrored bars on the top from the corners towards the center
+            spriteBatch.Draw(pixel, new Rectangle(leftX, 0, barWidth, (int)barHeight), color);
+            spriteBatch.Draw(pixel, new Rectangle(rightX, 0, barWidth, (int)barHeight), color);
+        }
+        spriteBatch.End();
+    }
+
+    private void DrawRadial(float[] frequencyData)
+    {
+        if (frequencyData == null || frequencyData.Length == 0)
+        {
+            Debug.WriteLine("No frequency data to draw.");
+            return;
+        }
+        int enabledColorCount = ColorToggles.Count(t => t);
+        if (enabledColorCount == 0)
+            return; // Skip drawing if no colors are enabled
+        Debug.WriteLine($"Drawing {frequencyData.Length} bars with cutoff at {frequencyCutoff}");
+
+        int viewportWidth = graphicsDevice.Viewport.Width;
+        int viewportHeight = graphicsDevice.Viewport.Height;
+        Vector2 center = new Vector2(viewportWidth / 2, viewportHeight / 2);
+        float maxRadius = Math.Min(viewportWidth, viewportHeight) / 2; // Max radius of the circle
+        int maxIndex = (int)(frequencyData.Length * frequencyCutoff);
+        float angleStep = (float)(Math.PI * 2 / fftBinCount); // Total angle divided by the number of bins
+
+        spriteBatch.Begin();
+        for (int i = 0; i < maxIndex; i++)
+        {
+            float magnitude = frequencyData[i] * scaleFactor; // Apply scale factor
+            float normalizedMagnitude = Math.Min(magnitude, 1.0f); // Clamp magnitude to a max of 1
+            float radius = normalizedMagnitude * maxRadius;
+
+            Color color = ActiveColors[i % ActiveColors.Count];
+            float startAngle = i * angleStep;
+            float endAngle = startAngle + angleStep;
+
+            // Draw a wedge
+            DrawWedge(center, radius, startAngle, endAngle, color);
+        }
+        spriteBatch.End();
+    }
+
+    private void DrawWedge(Vector2 center, float radius, float startAngle, float endAngle, Color color)
+    {
+        int numSegments = 10; // Number of triangle segments to construct the wedge
+        Vector2 startVector = new Vector2((float)Math.Cos(startAngle), (float)Math.Sin(startAngle)) * radius;
+        Vector2 prevVector = startVector;
+
+        for (int i = 1; i <= numSegments; i++)
+        {
+            float angle = MathHelper.Lerp(startAngle, endAngle, i / (float)numSegments);
+            Vector2 newVector = new Vector2((float)Math.Cos(angle), (float)Math.Sin(angle)) * radius;
+
+            // Draw triangle from center to prevVector to newVector
+            DrawTriangle(center, center + prevVector, center + newVector, color);
+
+            // Mirror X
+            DrawTriangle(center, center + new Vector2(-prevVector.X, prevVector.Y), center + new Vector2(-newVector.X, newVector.Y), color);
+
+            // Mirror Y
+            DrawTriangle(center, center + new Vector2(prevVector.X, -prevVector.Y), center + new Vector2(newVector.X, -newVector.Y), color);
+
+            // Mirror both X and Y
+            DrawTriangle(center, center + new Vector2(-prevVector.X, -prevVector.Y), center + new Vector2(-newVector.X, -newVector.Y), color);
+
+            prevVector = newVector;
+        }
+    }
+
+    private void DrawTriangle(Vector2 v1, Vector2 v2, Vector2 v3, Color color)
+    {
+        VertexPositionColor[] vertices = new VertexPositionColor[3];
+        vertices[0] = new VertexPositionColor(new Vector3(v1, 0), color);
+        vertices[1] = new VertexPositionColor(new Vector3(v2, 0), color);
+        vertices[2] = new VertexPositionColor(new Vector3(v3, 0), color);
+
+        // Set your vertex buffer here if necessary or use an existing one
+
+        // Make sure you have a basic effect and set its properties
+        BasicEffect effect = new BasicEffect(graphicsDevice);
+        effect.VertexColorEnabled = true;
+        effect.Projection = Matrix.CreateOrthographicOffCenter(0, graphicsDevice.Viewport.Width, graphicsDevice.Viewport.Height, 0, 0, 1);
+        effect.View = Matrix.Identity;
+        effect.World = Matrix.Identity;
+
+        foreach (EffectPass pass in effect.CurrentTechnique.Passes)
+        {
+            pass.Apply();
+            graphicsDevice.DrawUserPrimitives(PrimitiveType.TriangleList, vertices, 0, 1);
+        }
+    }
 }   
