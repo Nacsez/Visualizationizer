@@ -11,6 +11,10 @@ First box closes the sidebar, second box opens the "Load SVG" dialog which will 
 F11 to enter or exit full screen mode (also buggy)
 
 Planned features:
+
 Toggles to add symetric visualization modes
+
 SVG parsing logic improvements to center and scale input images
+
 Sound reactive "jiggling" of the loaded SVG (gets bigger when louder)
+
