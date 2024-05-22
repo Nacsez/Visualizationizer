@@ -1,3 +1,9 @@
+5-22-24
+
+Added new visualization modes MirroredCenter, MirroredCorners, and Radial. Also adjusted sensitivity to be reactive and dialed in default values. Added buttons to control new modes and seems to be working smootly. Added ESC key to exit program.
+
+5-21-24
+
 This is a passion project intended to help teach me C# coding while giving me a light weight sound reactive viszualization program to run though a projector or on a screen. 
 
 It requires an audio input on the device it is run on in order to generate FFT data which is then passed to the visualizers. 
