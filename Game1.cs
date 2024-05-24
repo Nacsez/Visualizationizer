@@ -22,7 +22,7 @@ public class Vizualizationizer : Game
     private bool sidebarVisible;
     private Texture2D sidebarTexture, sliderTexture2, sliderTexture3;
     private Texture2D closeButtonTexture;
-    private int sidebarWidth = 250;
+    private int sidebarWidth = 260;
     private Texture2D sliderTexture;
     private Vector2 sliderPosition, sliderPosition2, sliderPosition3;
     private float sliderValue = 0.5f, sliderValue2 = 0.5f, sliderValue3 = 0.5f;
@@ -34,25 +34,21 @@ public class Vizualizationizer : Game
     private const double UpdateThreshold = 0.1; // seconds
     private Color[] colors = new Color[]
 {
-    // Reds
+    // Colors availabile in the color matrix. Colors appear in the listed order in the grid which is displayed in the sidebar menu
     Color.LightSalmon, Color.Red, Color.DarkRed,
-    // Oranges
-    Color.PeachPuff, Color.Orange, Color.DarkOrange,
-    // Yellows
-    Color.LightYellow, Color.Yellow, Color.Goldenrod,
-    // Greens
+    Color.DarkGoldenrod, Color.Orange, Color.DarkOrange,
+    Color.Goldenrod, Color.Yellow, Color.Gold,
     Color.LightGreen, Color.Green, Color.DarkGreen,
-    // Blues
-    Color.LightBlue, Color.Blue, Color.DarkBlue,
-    // Indigos
-    Color.MediumSlateBlue, Color.Indigo, Color.MidnightBlue,
-    // Violets
-    Color.Plum, Color.Violet, Color.DarkViolet,
-    // Greys
-    Color.LightGray, Color.Gray, Color.DarkSlateGray
+    Color.SpringGreen, Color.Chartreuse, Color.DarkOliveGreen,
+    Color.Aqua, Color.Blue, Color.DarkBlue,
+    Color.Plum, Color.Indigo, Color.MidnightBlue,
+    Color.Violet, Color.BlueViolet, Color.DarkViolet,
+    Color.PeachPuff, Color.MediumSlateBlue, Color.DarkOrchid,
+    Color.LightYellow, Color.Silver, Color.Gray,
+    Color.MintCream, Color.DarkGray, Color.DimGray
 };
-    private bool[] colorToggles = new bool[24]; // Adjust to 24 toggles
-    private Rectangle[] colorButtons = new Rectangle[24];
+    private bool[] colorToggles = new bool[33]; // Adjust to 33 toggles
+    private Rectangle[] colorButtons = new Rectangle[33];
     private Texture2D colorButtonTexture;
     private Texture2D svgTexture;
     private Rectangle svgButtonRect;
@@ -70,8 +66,8 @@ public class Vizualizationizer : Game
         sidebarVisible = false;
         Window.AllowUserResizing = true;
         graphics.HardwareModeSwitch = false; // Keep the window borderless on full screen toggle
-        graphics.PreferredBackBufferWidth = 1200; // initial width
-        graphics.PreferredBackBufferHeight = 900; // initial height
+        graphics.PreferredBackBufferWidth = 1400; // initial width
+        graphics.PreferredBackBufferHeight = 1200; // initial height
         Window.ClientSizeChanged += OnResize;
     }
 
@@ -100,9 +96,9 @@ public class Vizualizationizer : Game
         int padding = 15;     // Padding between buttons
         int startX = 40;      // Starting X offset
         int startY = 300;     // Starting Y offset from the top of the sidebar
-        int rows = 8; // Eight rows
+        int rows = 11; // Eight rows
         int columns = 3; // Three columns
-        colorButtons = new Rectangle[rows * columns]; // Initialize for 24 buttons
+        colorButtons = new Rectangle[rows * columns]; // Initialize for 33 buttons
 
         for (int i = 0; i < colorButtons.Length; i++)
         {
@@ -117,7 +113,7 @@ public class Vizualizationizer : Game
 
         int modeButtonWidth = 60;
         int modeButtonHeight = 30;
-        int modeStartY = 770; // Adjust this value based on your actual layout
+        int modeStartY = 950; // Adjust this value based on your actual layout
         int modePadding = 25;
 
         modeButtonTexture = CreateColorTexture(modeButtonWidth, modeButtonHeight, Color.White); // You can customize this color or texture later
@@ -755,29 +751,38 @@ public class AudioVisualizer
         int numSegments = 10; // Number of triangle segments to construct the wedge
         Vector2 startVector = new Vector2((float)Math.Cos(startAngle), (float)Math.Sin(startAngle)) * radius;
         Vector2 prevVector = startVector;
-
+        // Ensure effect is only created once or use an existing effect that is disposed elsewhere
+        BasicEffect effect = new BasicEffect(graphicsDevice)
+        {
+            VertexColorEnabled = true,
+            Projection = Matrix.CreateOrthographicOffCenter(0, graphicsDevice.Viewport.Width, graphicsDevice.Viewport.Height, 0, 0, 1),
+            View = Matrix.Identity,
+            World = Matrix.Identity
+        };
         for (int i = 1; i <= numSegments; i++)
         {
             float angle = MathHelper.Lerp(startAngle, endAngle, i / (float)numSegments);
             Vector2 newVector = new Vector2((float)Math.Cos(angle), (float)Math.Sin(angle)) * radius;
 
             // Draw triangle from center to prevVector to newVector
-            DrawTriangle(center, center + prevVector, center + newVector, color);
+            DrawTriangle(center, center + prevVector, center + newVector, color, effect);
 
             // Mirror X
-            DrawTriangle(center, center + new Vector2(-prevVector.X, prevVector.Y), center + new Vector2(-newVector.X, newVector.Y), color);
+            DrawTriangle(center, center + new Vector2(-prevVector.X, prevVector.Y), center + new Vector2(-newVector.X, newVector.Y), color, effect);
 
             // Mirror Y
-            DrawTriangle(center, center + new Vector2(prevVector.X, -prevVector.Y), center + new Vector2(newVector.X, -newVector.Y), color);
+            DrawTriangle(center, center + new Vector2(prevVector.X, -prevVector.Y), center + new Vector2(newVector.X, -newVector.Y), color, effect);
 
             // Mirror both X and Y
-            DrawTriangle(center, center + new Vector2(-prevVector.X, -prevVector.Y), center + new Vector2(-newVector.X, -newVector.Y), color);
+            DrawTriangle(center, center + new Vector2(-prevVector.X, -prevVector.Y), center + new Vector2(-newVector.X, -newVector.Y), color, effect);
 
             prevVector = newVector;
         }
+        // Dispose of the effect after use to prevent memory leak
+        effect.Dispose();
     }
 
-    private void DrawTriangle(Vector2 v1, Vector2 v2, Vector2 v3, Color color)
+    private void DrawTriangle(Vector2 v1, Vector2 v2, Vector2 v3, Color color, BasicEffect effect)
     {
         VertexPositionColor[] vertices = new VertexPositionColor[3];
         vertices[0] = new VertexPositionColor(new Vector3(v1, 0), color);
@@ -786,8 +791,6 @@ public class AudioVisualizer
 
         // Set your vertex buffer here if necessary or use an existing one
 
-        // Make sure you have a basic effect and set its properties
-        BasicEffect effect = new BasicEffect(graphicsDevice);
         effect.VertexColorEnabled = true;
         effect.Projection = Matrix.CreateOrthographicOffCenter(0, graphicsDevice.Viewport.Width, graphicsDevice.Viewport.Height, 0, 0, 1);
         effect.View = Matrix.Identity;
