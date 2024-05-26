@@ -20,30 +20,33 @@ public class Vizualizationizer : Game
     private AudioVisualizer visualizer;
     private AudioManager audioManager;
     private bool sidebarVisible;
-    private Texture2D sidebarTexture, sliderTexture2, sliderTexture3;
+    private Texture2D sidebarTexture, sliderTexture2, sliderTexture3, sliderTexture4, sliderTexture5;
     private Texture2D closeButtonTexture;
     private int sidebarWidth = 260;
     private Texture2D sliderTexture;
-    private Vector2 sliderPosition, sliderPosition2, sliderPosition3;
+    private Vector2 sliderPosition, sliderPosition2, sliderPosition3, sliderPosition4, sliderPosition5;
     private float sliderValue = 0.5f, sliderValue2 = 0.5f, sliderValue3 = 0.5f;
     private float frequencyCutoff = 0.5f; // Default cutoff at half of the frequency range
     private float minScaleFactor = 0.01f;
     private float maxScaleFactor = 1f;
+    private float svgScaleSliderValue = 1.0f; // Start at 100%
+    private float svgBaseScale = 1.0f; // Base scale for the SVG texture
+    private float perturbationSliderValue = 0.0f; // Start at zero for no purterbation movement
     private TimeSpan lastUpdate = TimeSpan.Zero;
     private TimeSpan lastButtonPressTime;
     private const double UpdateThreshold = 0.1; // seconds
     private Color[] colors = new Color[]
 {
     // Colors availabile in the color matrix. Colors appear in the listed order in the grid which is displayed in the sidebar menu
-    Color.LightSalmon, Color.Red, Color.DarkRed,
-    Color.DarkGoldenrod, Color.Orange, Color.DarkOrange,
-    Color.Goldenrod, Color.Yellow, Color.Gold,
-    Color.LightGreen, Color.Green, Color.DarkGreen,
-    Color.SpringGreen, Color.Chartreuse, Color.DarkOliveGreen,
-    Color.Aqua, Color.Blue, Color.DarkBlue,
-    Color.Plum, Color.Indigo, Color.MidnightBlue,
-    Color.Violet, Color.BlueViolet, Color.DarkViolet,
-    Color.PeachPuff, Color.MediumSlateBlue, Color.DarkOrchid,
+    Color.Salmon, Color.Red, Color.DarkRed,
+    Color.Goldenrod, Color.Orange, Color.DarkOrange,
+    Color.Gold, Color.Yellow, Color.DarkGoldenrod,
+    Color.LightGreen, Color.Chartreuse, Color.DarkGreen,
+    Color.SpringGreen, Color.Green, Color.DarkOliveGreen,
+    Color.Aqua, Color.DodgerBlue, Color.DarkBlue,
+    Color.Plum, Color.Blue, Color.MidnightBlue,
+    Color.Violet, Color.DarkOrchid, Color.Indigo,
+    Color.PeachPuff, Color.MediumSlateBlue, Color.BlueViolet,
     Color.LightYellow, Color.Silver, Color.Gray,
     Color.MintCream, Color.DarkGray, Color.DimGray
 };
@@ -55,6 +58,9 @@ public class Vizualizationizer : Game
     private Rectangle[] modeButtons = new Rectangle[4];
     private Texture2D modeButtonTexture;
     private string[] modeLabels = { "Standard", "MirroredMiddle", "MirroredCorners", "Radial" };
+    private Vector2 svgPosition;
+    private Vector2 svgDragOffset;
+    private bool isDraggingSvg = false;
     public Vizualizationizer()
     {
         graphics = new GraphicsDeviceManager(this);
@@ -89,13 +95,16 @@ public class Vizualizationizer : Game
         sliderPosition = new Vector2(20, 200);
         sliderPosition2 = new Vector2(20, 100);
         sliderPosition3 = new Vector2(20, 150);
+        sliderPosition4 = new Vector2(20, 250);
+        sliderPosition5 = new Vector2(20, 300); 
+        svgPosition = new Vector2(GraphicsDevice.Viewport.Width / 2, GraphicsDevice.Viewport.Height / 2);
         sidebarArea = new Rectangle(0, 0, sidebarWidth, GraphicsDevice.Viewport.Height);
         closeButtonRect = new Rectangle(10, 10, 80, 30);
         svgButtonRect = new Rectangle(100, 10, 80, 30); // Positioned 100 pixels from the left
         int buttonSize = 40;  // Size of each color toggle button
         int padding = 15;     // Padding between buttons
         int startX = 40;      // Starting X offset
-        int startY = 300;     // Starting Y offset from the top of the sidebar
+        int startY = 350;     // Starting Y offset from the top of the sidebar
         int rows = 11; // Eight rows
         int columns = 3; // Three columns
         colorButtons = new Rectangle[rows * columns]; // Initialize for 33 buttons
@@ -113,7 +122,7 @@ public class Vizualizationizer : Game
 
         int modeButtonWidth = 60;
         int modeButtonHeight = 30;
-        int modeStartY = 950; // Adjust this value based on your actual layout
+        int modeStartY = 1000; // Adjust this value based on your actual layout
         int modePadding = 25;
 
         modeButtonTexture = CreateColorTexture(modeButtonWidth, modeButtonHeight, Color.White); // You can customize this color or texture later
@@ -129,7 +138,7 @@ public class Vizualizationizer : Game
             Colors = colors,
             ColorToggles = colorToggles
         };
-        
+        svgPosition = new Vector2(GraphicsDevice.Viewport.Width / 2, GraphicsDevice.Viewport.Height / 2);
     }
     private void OpenSvgFileDialog()
     {
@@ -196,6 +205,14 @@ public class Vizualizationizer : Game
         System.Runtime.InteropServices.Marshal.Copy(bitmapData.Scan0, buffer, 0, buffer.Length);
         bitmap.UnlockBits(bitmapData);
 
+        // Swap the red and blue channels
+        for (int i = 0; i < buffer.Length; i += 4)
+        {
+            byte temp = buffer[i];        // Store blue channel
+            buffer[i] = buffer[i + 2];    // Assign red to blue
+            buffer[i + 2] = temp;         // Assign stored blue to red
+        }
+
         texture.SetData(buffer);
         return texture;
     }
@@ -210,6 +227,8 @@ public class Vizualizationizer : Game
         sliderTexture = CreateColorTexture(220, 20, Color.Gray);
         sliderTexture2 = CreateColorTexture(220, 20, Color.Gray);
         sliderTexture3 = CreateColorTexture(220, 20, Color.Gray);
+        sliderTexture4 = CreateColorTexture(220, 20, Color.Gray);
+        sliderTexture5 = CreateColorTexture(220, 20, Color.Gray);
     }
 
     private void OnResize(object sender, EventArgs e)
@@ -266,7 +285,16 @@ public class Vizualizationizer : Game
                     visualizer.UpdateFFTBinCount(newFFTLength / 2);
                 }
             });
-
+            HandleSlider(mouse, sliderPosition4, sliderTexture, ref svgScaleSliderValue, 0.01f, 1f, v =>
+            {
+                // This will update the SVG scale factor
+                svgScaleSliderValue = v;
+            });
+            HandleSlider(mouse, sliderPosition5, sliderTexture5, ref perturbationSliderValue, 0.0f, 1.0f, v =>
+            {
+                perturbationSliderValue = v;
+                Debug.WriteLine($"Perturbation Slider Value: {perturbationSliderValue}");
+            });
             // Handle color button interactions
             HandleColorButtonInteraction(mouse, gameTime);
             for (int i = 0; i < modeButtons.Length; i++)
@@ -293,19 +321,59 @@ public class Vizualizationizer : Game
         {
             Exit();  // This will close the application
         }
+        // Check for Delete key press to drop the SVG texture
+        if (keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Delete))
+        {
+            svgTexture = null; // Clear the SVG texture
+        }
         if (svgTexture != null)
         {
             Debug.WriteLine("SVG Texture is ready to be drawn.");
+            if (mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
+            {
+                if (!isDraggingSvg)
+                {
+                    // Start dragging if the mouse is over the SVG texture
+                    int desiredWidth = (int)((GraphicsDevice.Viewport.Width / 3) * svgScaleSliderValue);
+                    int desiredHeight = (int)((GraphicsDevice.Viewport.Height / 3) * svgScaleSliderValue);
+                    float svgAspectRatio = (float)svgTexture.Width / svgTexture.Height;
+                    if ((float)desiredWidth / desiredHeight > svgAspectRatio)
+                    {
+                        desiredWidth = (int)(desiredHeight * svgAspectRatio);
+                    }
+                    else
+                    {
+                        desiredHeight = (int)(desiredWidth / svgAspectRatio);
+                    }
+
+                    int posX = (int)(svgPosition.X - desiredWidth / 2);
+                    int posY = (int)(svgPosition.Y - desiredHeight / 2);
+                    Rectangle svgRectangle = new Rectangle(posX, posY, desiredWidth, desiredHeight);
+
+                    if (svgRectangle.Contains(mouse.Position))
+                    {
+                        isDraggingSvg = true;
+                        svgDragOffset = svgPosition - mouse.Position.ToVector2();
+                    }
+                }
+                else
+                {
+                    // Update the position while dragging
+                    svgPosition = mouse.Position.ToVector2() + svgDragOffset;
+                }
+            }
+            else
+            {
+                // Stop dragging
+                isDraggingSvg = false;
+            }
+            visualizer.UpdateFrequencyData(audioManager.FrequencyData);
         }
         else
         {
             Debug.WriteLine("SVG Texture not ready yet.");
         }
 
-        //if (svgTexture != null)
-        //{
-        //    spriteBatch.Draw(svgTexture, new Vector2(400, 200), Color.White); // Adjust position as needed
-        //}
         base.Update(gameTime);
         
     }
@@ -318,6 +386,16 @@ public class Vizualizationizer : Game
         // Update and draw the frequency data visualization
         visualizer.UpdateFrequencyData(audioManager.FrequencyData);
         visualizer.Draw(audioManager.FrequencyData);
+        // Get the sum of the FFT values for perturbation effect
+        float amplitudeSum = 0;
+        if (audioManager.FrequencyData != null)
+        {
+            amplitudeSum = visualizer.GetAmplitudeSum(audioManager.FrequencyData);
+        }
+        // Normalize the amplitude sum and apply the perturbation slider value
+        float maxPossibleSum = audioManager.FrequencyData.Length * 1.0f; // Adjust this based on your expected data range
+        float normalizedAmplitudeSum = amplitudeSum / maxPossibleSum;
+        float amplitudeFactor = MathHelper.Clamp(1.0f + (normalizedAmplitudeSum) * 100.0f * perturbationSliderValue, 0.0f, 1000.0f);
 
         // Begin drawing sprites
         spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied);
@@ -326,9 +404,11 @@ public class Vizualizationizer : Game
             int viewportWidth = GraphicsDevice.Viewport.Width;
             int viewportHeight = GraphicsDevice.Viewport.Height;
 
-            // Calculate the desired size to take up the center of the screen
-            int desiredWidth = 2*viewportWidth / 3;
-            int desiredHeight = 2*viewportHeight / 3;
+            // Calculate the desired size based on the scale slider value
+            int baseWidth = 2 * viewportWidth / 3;
+            int baseHeight = 2 * viewportHeight / 3;
+            int desiredWidth = (int)(baseWidth * svgScaleSliderValue * amplitudeFactor);
+            int desiredHeight = (int)(baseHeight * svgScaleSliderValue * amplitudeFactor);
 
             float svgAspectRatio = (float)svgTexture.Width / svgTexture.Height;
             if ((float)desiredWidth / desiredHeight > svgAspectRatio)
@@ -342,14 +422,13 @@ public class Vizualizationizer : Game
                 desiredHeight = (int)(desiredWidth / svgAspectRatio);
             }
 
-            // Calculate the position to center the SVG
-            int posX = (viewportWidth - desiredWidth) / 2;
-            int posY = (viewportHeight - desiredHeight) / 2;
+            // Calculate the position of the SVG
+            int posX = (int)(svgPosition.X - desiredWidth / 2);
+            int posY = (int)(svgPosition.Y - desiredHeight / 2);
 
             spriteBatch.Draw(svgTexture, new Rectangle(posX, posY, desiredWidth, desiredHeight), Color.White);
 
-            Debug.WriteLine($"Drawing SVG at {posX},{posY}");
-            //Debug.WriteLine("Drawing SVG at 100,100");
+            Debug.WriteLine($"Drawing SVG at {posX},{posY} with Amplitude Factor: {amplitudeFactor}"); // Add debug line to check the amplitude factor
 
         }
         if (sidebarVisible)
@@ -369,7 +448,8 @@ public class Vizualizationizer : Game
             spriteBatch.Draw(sliderTexture, new Rectangle(sliderPosition.ToPoint(), new Point((int)(sliderTexture.Width * sliderValue), sliderTexture.Height)), Color.White);
             spriteBatch.Draw(sliderTexture2, new Rectangle(sliderPosition2.ToPoint(), new Point((int)(sliderTexture2.Width * sliderValue2), sliderTexture2.Height)), Color.White);
             spriteBatch.Draw(sliderTexture3, new Rectangle(sliderPosition3.ToPoint(), new Point((int)(sliderTexture3.Width * sliderValue3), sliderTexture3.Height)), Color.White);
-
+            spriteBatch.Draw(sliderTexture, new Rectangle(sliderPosition4.ToPoint(), new Point((int)(sliderTexture.Width * svgScaleSliderValue), sliderTexture.Height)), Color.White);
+            spriteBatch.Draw(sliderTexture5, new Rectangle(sliderPosition5.ToPoint(), new Point((int)(sliderTexture5.Width * perturbationSliderValue), sliderTexture5.Height)), Color.White);
             // Draw the color toggle buttons
             for (int i = 0; i < colorButtons.Length; i++)
             {
@@ -431,6 +511,7 @@ public class AudioManager
     {
         m = (int)Math.Log(fftLength, 2.0);
         fftBuffer = new Complex[fftLength];
+        FrequencyData = new float[fftLength / 2]; // Initialize FrequencyData to avoid null references
     }
 
     public void Initialize(int fftLength = 512)
@@ -438,7 +519,7 @@ public class AudioManager
         this.fftLength = fftLength;
         m = (int)Math.Log(fftLength, 2.0);
         fftBuffer = new Complex[fftLength];
-
+        FrequencyData = new float[fftLength / 2]; // Reinitialize FrequencyData with the correct size
         try
         {
             int deviceNumber = SelectAudioInputDevice();
@@ -472,6 +553,7 @@ public class AudioManager
             fftLength = newLength;
             m = (int)Math.Log(fftLength, 2.0);
             fftBuffer = new Complex[fftLength];
+            FrequencyData = new float[fftLength / 2]; // Reinitialize FrequencyData with the correct size
         }
     }
 
@@ -525,6 +607,21 @@ public class AudioVisualizer
     public Color[] Colors { get; set; }  // Array of colors
     public bool[] ColorToggles { get; set; }  // Array of color toggles
     private float scaleFactor = 1.0f;  // Default scale factor
+    // Method to get the sum of FFT values
+    public float GetAmplitudeSum(float[] frequencyData)
+    {
+        if (frequencyData == null || frequencyData.Length == 0)
+            return 0;
+
+        float sum = 0;
+        for (int i = 0; i < frequencyData.Length; i++)
+        {
+            sum += frequencyData[i];
+        }
+        Debug.WriteLine($"Amplitude Sum: {sum}");
+        return sum;
+    }
+
     public void UpdateActiveColors(Color[] allColors, bool[] toggles)
     {
         ActiveColors.Clear();
