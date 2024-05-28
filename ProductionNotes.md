@@ -1,3 +1,31 @@
+5-27-24
+
+Created Installation media and uninstaller with InnoSetup. Created several SVGs as well as a test logo which can be loaded in and used with the program. 
+
+Features to add before release:
+-Design and Add Logo and Icon for Program
+-Create Logic to autoload SVG file on startup from "Content" folder
+-Create SVG file to load on startup which servers as Tutorial
+-Enable pressing the H key to bring up an overlay which has some symbols and words which describe what each button or section does
+-Create Font?? Pick a font to use if I don't
+
+Planned things to do outside of the software:
+-Create Physical Media for Release Promo
+-Create SVG Pack for SPRY standardize SVGs that come with program
+-Create Final Installation Media 
+  -TEST THIS OUT A COUPLE PLACES
+-Create instructional video
+-Create website
+-Create demonstration video
+-Create Screenshots for Publication
+
+
+5-25-24
+
+Memory leak is fixed. Added new colors up to 33 total including grey shades and changed the location of the colors to be more intuitive. Increased the side of sidebar slightly and plan to reorganize buttons just a bit before final release. Figured out that the viewspace limit for SVG input file is 1000 by 1000 pixels and it works reliably at 1:1 scaling. Might be able to get better resolution by messing with scaling of input files but it works well enough right now. I plan on making several SVG files and templates to accompany the program on installation.
+
+Next step to get the SVG file to react with input sound and install a slider to control it size. I also want to add logic to move the SVG file when you click and drag it.
+
 5-22-24 20 hours later
 
 Found memory leak after doing some extended session testing in the radial mode. Added MIT license file to repository. Reorganized prouduction notes and README. 
