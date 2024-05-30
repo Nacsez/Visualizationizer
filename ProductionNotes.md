@@ -1,3 +1,20 @@
+5-29-24 -- 5-30-24
+
+Added default SVG setting function by holding Shift + Clicking on Load SVG Button. This copies the SVG file to the SVGs content folder in the program folder. Hopefully the installer package will be able to set this up. Still need to do that part. 
+Added CenterColumn and Puddle modes. Wasn't planning on adding more modes but CentralColumn was first found as a bug while trying to fix an issue with scaling in MirroredCorners mode. Fixed the scaling issue in MirroredCorners by adding a scaling function to the cutoff. It now will fill the screen and adjust the size of the rectangles to suit. 
+Puddle mode has been kicking around in my head for a while and decided to implement it because 5 doesnt make the interface buttons even and 6 does. 
+Got feedback on logo design and current design is likely to become the icon for the program. Need to work on making a proper logo with the radial mode implied behind the V
+Still to do:
+-Implement H button help feature
+  -Load Font
+  -Decide on Implementation Overlay vs Direct Render
+-Create SVG Tutorial to load on install
+-Build Install Media and test on several systems
+  -need to make sure to package all .NET framework stuff as well as file folders with SVG packs
+-Instructional and Promotional Material
+-Website
+
+
 5-27-24
 
 Created Installation media and uninstaller with InnoSetup. Created several SVGs as well as a test logo which can be loaded in and used with the program. 
