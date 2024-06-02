@@ -52,9 +52,19 @@ You will find most of this information in the tutorial.svg file. The controls ar
 
 ## Contributing
 
-I am happy to hear your suggestions. If you come across bugs or have ideas for features, please open an issue or add comment to the github page. I created this as an open source project so that others may take what I did here and build on it for themselves. If you want to contribute to the main project, create a fork and send a pull request. I cannot promise anything but there are many possible functions and features that could be added to this framework. I have some in mind for myself to add in future versions and I can only imagine what others might want to do with this. I plan to keep this project open source and free for general use.
+Don't forget to give the project a star!
 
-If you choose to take the software and do your own thing with it, best of luck! Please include attribution per the MIT License.
+I am happy to hear your suggestions. If you come across bugs or have ideas for features, please open an issue or add comment to the github page. I created this as an open source project so that others may take what I did here and build on it for themselves. 
+Here a suggested path should you want to add code to the project:
+1. Fork the Project and do it yourself :D (go for it!)
+  2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+  3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+  4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request for main branch
+   
+No promises on what will and will not be added to the main branch, but if its a neat feature and doesn't detract from the tone/intention of the program, it will likely be welcome. And even if it isn't, you can do what you like on your own with it. If you choose to take the software and do your own thing with it, best of luck! Please include attribution per the MIT License. 
+
+I have some features in mind for myself to add in future versions and I can only imagine what others might want to do with this. I plan to keep this project open source and free for general use.
 
 ## Support the Project
 
