@@ -40,3 +40,10 @@ _build/
 *.local
 *.DS_Store
 Thumbs.db
+# Exclude library and bin and obj folders
+bin/
+obj/
+LibraryInstallers/
+# Exclude temporary files
+*.tmp
+*.bak

@@ -3,19 +3,27 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net6.0-windows</TargetFramework>
     <RollForward>Major</RollForward>
-    <PublishReadyToRun>false</PublishReadyToRun>
     <TieredCompilation>false</TieredCompilation>
     <UseWindowsForms>true</UseWindowsForms>
-  </PropertyGroup>
-  <PropertyGroup>
+	  <PublishTrimmed>false</PublishTrimmed>
+	<TrimMode>copyused</TrimMode>
+	<PublishReadyToRun>false</PublishReadyToRun>
+	<SelfContained>true</SelfContained>
+	<PublishSingleFile>true</PublishSingleFile>
+	<RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Icon.ico</ApplicationIcon>
+	<DebugType>none</DebugType>
+	  <runtime>
+		  <AppContextSwitchOverrides value="Switch.System.Xml.IgnoreEmptyKeySequences=true" />
+	  </runtime>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="MonoGame.Framework.WindowsDX" Version="3.8.1.303" />
     <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.1.303" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Svg" Version="3.4.7" />
+	<TrimmerRootAssembly Include="System.Windows.Forms" />
   </ItemGroup>
   <Target Name="RestoreDotnetTools" BeforeTargets="Restore">
     <Message Text="Restoring dotnet tools" Importance="High" />
