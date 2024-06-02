@@ -16,7 +16,7 @@ It is coded in C# using the free and open source library Monogame and Windows .N
 
 To get started with Visualizationizer 1.0, follow these steps:
 
-1. **Download the Installer**: Navigate to the github page for Visualizationizer. [https://github.com/Nacsez/Visualizationizer] Find the Releases section and download the "Visualizationizer1.0Installer.exe"
+1. **Download the Installer**: Navigate to the github page for Visualizationizer. [https://github.com/Nacsez/Visualizationizer](https://github.com/Nacsez/Visualizationizer/releases/tag/1.0) Find "Visualizationizer1.0Installer.exe" in the files downloads at the bottom.
 2. **Run the Installer**: Execute the downloaded file and follow the on-screen instructions to install. Required libraries should be included in the installer so no internet connection should be required.
 3. **Set up Default Windows Audio Input Device**: This application relies on the default audio input from your Windows session for visualization input. Please set this up before opening the application.
 4. **Launch the Application**: Open the application from your desktop or start menu shortcut. If you are opening the program for the first time, you will be greeted with the tutorial.svg file.
