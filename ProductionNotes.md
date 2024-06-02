@@ -1,3 +1,17 @@
+6-1-24 -- 6-2-24
+
+-Made several minor changes and cleaned up the code over the past few days. Commented the code better as well and removed unneeded sections. Commented out most debugging sections. 
+-Spent quite a while trying to get the installer right. Removed 32 bit compatibilitiy to shirnk the install file to less than 100mb. Current install file size is 82mb. 
+-Adjusted folder permissions of installer and created SVGs folder on install with permissions to edit it. 
+-Decided against adding the H key function because of complexity. May add it in future.
+-SVG Tutorial created and automatically loaded after installation.
+-Install media is uploaded to release page and release page draft made up
+
+Still needed
+-Still need to make video for release
+-Need to figure out a website maybe?
+-Need to figure out how to publicize this
+
 5-29-24 -- 5-30-24
 
 Added default SVG setting function by holding Shift + Clicking on Load SVG Button. This copies the SVG file to the SVGs content folder in the program folder. Hopefully the installer package will be able to set this up. Still need to do that part. 
