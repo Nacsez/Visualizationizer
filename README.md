@@ -43,12 +43,12 @@ You will find most of this information in the tutorial.svg file. The controls ar
 - **Fifth Slider** adjusts the Perturbation Factor for the loaded SVG file. This can be set at Zero to stop the image from moving. Larger values will have the image get bigger as it reacts to the sound.
 - **Color Toggle Buttons** control the available colors to assign to the visualization panel. Only colors which are activated will appear in the rendered panel. This is a good way to control the vibe or match with an imported file.
 - **Mode Selection Buttons** below the color grid toggle between the different visual modes of the equalizer display. Available Visual Modes:
-      -Standard-  This mode is similar to the classic linear graphic equalizer while still giving you control over the slider inputs and colors
-      -MirroredCenter-  This mode mirrors the equalizer bars above and below the centerline but adds a gap on the bottom rectangles to create a shadow or reflection effect
-      -MirroredCorners-  This mode mirrors the equalizer to start from each corner of the view screen and render inward toward the center. This has the effect of surrounding the outer perimeter of the screen with a color reaction that tends to fill in more on the edges. Scaling works somewhat differently in this mode
-      -Radial-  This mode takes the linear equalizer and instead projects it radially around the center. It is mirrored by 180 degrees and will overlap upon itself with the cutoff slider pulled past half way by design. Some neat effects are possible by adjusting the color and slider values in this mode. It is also probably the most resource heavy mode in the program.
-      -CenterColumn-  This mode is similar to mirrored corners except it reverses the bottom of the spectrum to be in the center of the screen. This has the effect of connecting the center in a column.
-      -Puddle-  This mode is different from the rest in that it does not change shape with audio input but rather changes opacity. The concentric circles will render according to the slider settings but remain still once defined. The audio then maps to the opacity of the color in each circle.
+  -Standard-  This mode is similar to the classic linear graphic equalizer while still giving you control over the slider inputs and colors
+  -MirroredCenter-  This mode mirrors the equalizer bars above and below the centerline but adds a gap on the bottom rectangles to create a shadow or reflection effect
+  -MirroredCorners-  This mode mirrors the equalizer to start from each corner of the view screen and render inward toward the center. This has the effect of surrounding the outer perimeter of the screen with a color reaction that tends to fill in more on the edges. Scaling works somewhat differently in this mode
+  -Radial-  This mode takes the linear equalizer and instead projects it radially around the center. It is mirrored by 180 degrees and will overlap upon itself with the cutoff slider pulled past half way by design. Some neat effects are possible by adjusting the color and slider values in this mode. It is also probably the most resource heavy mode in the program.
+  -CenterColumn-  This mode is similar to mirrored corners except it reverses the bottom of the spectrum to be in the center of the screen. This has the effect of connecting the center in a column.
+  -Puddle-  This mode is different from the rest in that it does not change shape with audio input but rather changes opacity. The concentric circles will render according to the slider settings but remain still once defined. The audio then maps to the opacity of the color in each circle.
 
 ## Contributing
 
