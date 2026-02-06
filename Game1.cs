@@ -1,4 +1,4 @@
-﻿//Welcome to Visualizationizer! I did my best to comment the code. There is always more to do and more that could be done, ya know?
+﻿ //Welcome to Visualizationizer! I did my best to comment the code. There is always more to do and more that could be done, ya know?
 //Debug lines have been commented out for resources. uncomment them as needed
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Windows.Forms;
 using Svg;
 using System.IO;
+
 public class Visualizationizer : Game
 {
     private GraphicsDeviceManager graphics;
@@ -61,6 +62,10 @@ public class Visualizationizer : Game
     private Vector2 svgPosition;
     private Vector2 svgDragOffset;
     private bool isDraggingSvg = false;
+    private KeyboardState previousKeyboardState;
+    private string loadedMediaPath = string.Empty;
+    private AppState appState = new AppState();
+    private ProfileManager profileManager = new ProfileManager();
     public Visualizationizer()
     {
         graphics = new GraphicsDeviceManager(this);
@@ -91,12 +96,6 @@ public class Visualizationizer : Game
     protected override void Initialize()
     {
         base.Initialize();
-        visualizer = new AudioVisualizer(GraphicsDevice, spriteBatch)
-        {
-            Colors = colors,
-            ColorToggles = colorToggles
-        };
-        ApplyInitialSettings();
         sliderPosition = new Vector2(20, 100);
         sliderPosition2 = new Vector2(20, 150);
         sliderPosition3 = new Vector2(20, 200);
@@ -148,6 +147,7 @@ public class Visualizationizer : Game
             if (openFileDialog.ShowDialog() == DialogResult.OK)
             {
                 svgTexture = LoadSvgTexture(openFileDialog.FileName);
+                loadedMediaPath = openFileDialog.FileName;
 
                 if (shiftPressed)
                 {
@@ -183,6 +183,7 @@ public class Visualizationizer : Game
         if (File.Exists(startupPath))
         {
             svgTexture = LoadSvgTexture(startupPath);
+            loadedMediaPath = startupPath;
             //Debug.WriteLine("Startup SVG loaded successfully.");
         }
         else
@@ -281,9 +282,15 @@ public class Visualizationizer : Game
     protected override void LoadContent()
     {
         spriteBatch = new SpriteBatch(GraphicsDevice);
-        visualizer = new AudioVisualizer(GraphicsDevice, spriteBatch);
         audioManager = new AudioManager();
         audioManager.Initialize();
+        visualizer = new AudioVisualizer(GraphicsDevice, spriteBatch)
+        {
+            Colors = colors,
+            ColorToggles = colorToggles
+        };
+        ApplyInitialSettings();
+        SyncAppStateFromRuntime();
         sidebarTexture = CreateColorTexture(sidebarWidth, GraphicsDevice.Viewport.Height, new Color(100, 100, 244));
         closeButtonTexture = CreateColorTexture(80, 30, new Color(245, 245, 245));
         sliderTexture = CreateColorTexture(220, 20, Color.Gray);
@@ -381,6 +388,7 @@ public class Visualizationizer : Game
         }
         //Get Keyboard Key Presses
         KeyboardState keyboardState = Keyboard.GetState();
+        HandleProfileHotkeys(keyboardState);
         //Press ESC to Exit Program
         if (keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Escape))
         {
@@ -442,6 +450,8 @@ public class Visualizationizer : Game
         {
             //Debug.WriteLine("SVG Texture not ready yet.");
         }
+        SyncAppStateFromRuntime();
+        previousKeyboardState = keyboardState;
         base.Update(gameTime);
     }
     protected override void Draw(GameTime gameTime)
@@ -543,6 +553,123 @@ public class Visualizationizer : Game
             sliderVal = (mouse.X - sliderPos.X) / (float)sliderTex.Width;
             sliderVal = MathHelper.Clamp(sliderVal, minVal, maxVal);
             updateAction(sliderVal);
+        }
+    }
+
+    private void HandleProfileHotkeys(KeyboardState keyboardState)
+    {
+        bool controlDown = keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.LeftControl)
+            || keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.RightControl);
+
+        var quickSlots = new (Microsoft.Xna.Framework.Input.Keys key, int slot)[]
+        {
+            (Microsoft.Xna.Framework.Input.Keys.D1, 1),
+            (Microsoft.Xna.Framework.Input.Keys.D2, 2),
+            (Microsoft.Xna.Framework.Input.Keys.D3, 3),
+            (Microsoft.Xna.Framework.Input.Keys.D4, 4),
+            (Microsoft.Xna.Framework.Input.Keys.D5, 5),
+            (Microsoft.Xna.Framework.Input.Keys.D6, 6),
+            (Microsoft.Xna.Framework.Input.Keys.D7, 7),
+            (Microsoft.Xna.Framework.Input.Keys.D8, 8),
+            (Microsoft.Xna.Framework.Input.Keys.D9, 9),
+            (Microsoft.Xna.Framework.Input.Keys.D0, 10)
+        };
+
+        foreach (var (key, slot) in quickSlots)
+        {
+            if (!IsNewKeyPress(keyboardState, key))
+            {
+                continue;
+            }
+
+            if (controlDown)
+            {
+                SaveProfileToSlot(slot);
+            }
+            else
+            {
+                LoadProfileFromSlot(slot);
+            }
+        }
+    }
+
+    private bool IsNewKeyPress(KeyboardState keyboardState, Microsoft.Xna.Framework.Input.Keys key)
+    {
+        return keyboardState.IsKeyDown(key) && previousKeyboardState.IsKeyUp(key);
+    }
+
+    private void SaveProfileToSlot(int slot)
+    {
+        SyncAppStateFromRuntime();
+        profileManager.SaveSlot(slot, appState);
+    }
+
+    private void LoadProfileFromSlot(int slot)
+    {
+        if (!profileManager.TryLoadSlot(slot, out AppState loadedState))
+        {
+            return;
+        }
+
+        ApplyAppState(loadedState);
+        SyncAppStateFromRuntime();
+    }
+
+    private void SyncAppStateFromRuntime()
+    {
+        appState.AmplitudeSlider = sliderValue;
+        appState.CutoffSlider = sliderValue2;
+        appState.FftSlider = sliderValue3;
+        appState.SvgScaleSlider = svgScaleSliderValue;
+        appState.SvgPerturbationSlider = perturbationSliderValue;
+        appState.ModeIndex = (int)visualizer.Mode;
+        appState.ColorToggles = (bool[])colorToggles.Clone();
+        appState.LoadedMediaPath = loadedMediaPath;
+        appState.SetSvgPosition(svgPosition);
+        appState.FftLength = audioManager.FftLength;
+    }
+
+    private void ApplyAppState(AppState state)
+    {
+        appState = state;
+
+        sliderValue = MathHelper.Clamp(state.AmplitudeSlider, 0.05f, 1.0f);
+        sliderValue2 = MathHelper.Clamp(state.CutoffSlider, 0.1f, 1.0f);
+        sliderValue3 = MathHelper.Clamp(state.FftSlider, 0.1f, 1.0f);
+        svgScaleSliderValue = MathHelper.Clamp(state.SvgScaleSlider, 0.01f, 1.0f);
+        perturbationSliderValue = MathHelper.Clamp(state.SvgPerturbationSlider, 0.0f, 1.0f);
+        visualizer.Mode = (AudioVisualizer.VisualizationMode)Math.Clamp(state.ModeIndex, 0, modeButtons.Length - 1);
+
+        if (state.ColorToggles != null && state.ColorToggles.Length == colorToggles.Length)
+        {
+            colorToggles = (bool[])state.ColorToggles.Clone();
+            visualizer.ColorToggles = colorToggles;
+            visualizer.UpdateActiveColors(colors, colorToggles);
+        }
+
+        if (state.FftLength > 0 && state.FftLength != audioManager.FftLength)
+        {
+            audioManager.UpdateFFTLength(state.FftLength);
+            visualizer.UpdateFFTBinCount(state.FftLength / 2);
+        }
+
+        visualizer.UpdateFrequencyCutoff(sliderValue2);
+        float scaledValue = 1.0f + (100f - 1.0f) * sliderValue;
+        visualizer.UpdateScaleFactor(scaledValue);
+
+        svgPosition = state.GetSvgPosition();
+        loadedMediaPath = state.LoadedMediaPath ?? string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(loadedMediaPath) && File.Exists(loadedMediaPath))
+        {
+            try
+            {
+                svgTexture = LoadSvgTexture(loadedMediaPath);
+            }
+            catch
+            {
+                svgTexture = null;
+            }
         }
     }
 }
