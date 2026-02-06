@@ -40,7 +40,8 @@ public class Visualizationizer : Game
         RightMicMode,
         RightSystemMode,
         RightPrevInput,
-        RightNextInput
+        RightNextInput,
+        RightInputDevice
     }
 
     private struct FocusTarget
@@ -60,6 +61,7 @@ public class Visualizationizer : Game
     private Rectangle rightSystemModeButtonRect;
     private Rectangle rightPrevDeviceButtonRect;
     private Rectangle rightNextDeviceButtonRect;
+    private Rectangle[] rightInputDeviceButtons = Array.Empty<Rectangle>();
     private AudioVisualizer visualizer;
     private AudioManager audioManager;
     private bool sidebarVisible;
@@ -124,6 +126,7 @@ public class Visualizationizer : Game
     private int focusedControllerTargetIndex = -1;
     private bool controllerFocusVisible = false;
     private bool controllerHelpOverlayHeld = false;
+    private readonly Dictionary<int, Texture2D> inputDeviceIndexTextures = new Dictionary<int, Texture2D>();
     public Visualizationizer()
     {
         graphics = new GraphicsDeviceManager(this);
@@ -332,6 +335,7 @@ public class Visualizationizer : Game
         helpLabelTextures.Clear();
         focusHighlightTexture?.Dispose();
         focusHighlightTexture = null;
+        DisposeInputDeviceIndexTextures();
         audioManager?.Stop();
         base.UnloadContent();
     }
@@ -594,6 +598,24 @@ public class Visualizationizer : Game
             Color deviceButtonColor = audioManager.CaptureSource == AudioCaptureSource.Microphone ? Color.White : new Color(170, 170, 170);
             spriteBatch.Draw(closeButtonTexture, rightPrevDeviceButtonRect, deviceButtonColor);
             spriteBatch.Draw(closeButtonTexture, rightNextDeviceButtonRect, deviceButtonColor);
+
+            if (audioManager.CaptureSource == AudioCaptureSource.Microphone && rightInputDeviceButtons.Length > 0)
+            {
+                for (int i = 0; i < rightInputDeviceButtons.Length; i++)
+                {
+                    Rectangle rect = rightInputDeviceButtons[i];
+                    Color color = i == audioManager.SelectedInputDevice ? new Color(205, 255, 205) : Color.White;
+                    spriteBatch.Draw(closeButtonTexture, rect, color);
+
+                    Texture2D indexTexture = GetOrCreateInputDeviceIndexTexture(i);
+                    if (indexTexture != null)
+                    {
+                        int tx = rect.Center.X - (indexTexture.Width / 2);
+                        int ty = rect.Center.Y - (indexTexture.Height / 2);
+                        spriteBatch.Draw(indexTexture, new Vector2(tx, ty), Color.White);
+                    }
+                }
+            }
         }
         DrawControllerFocusHighlight();
         if (showHelpOverlay)
@@ -660,6 +682,16 @@ public class Visualizationizer : Game
 
         if (audioManager.CaptureSource == AudioCaptureSource.Microphone)
         {
+            for (int i = 0; i < rightInputDeviceButtons.Length; i++)
+            {
+                if (rightInputDeviceButtons[i].Contains(mouse.Position))
+                {
+                    audioManager.SelectInputDevice(i);
+                    lastButtonPressTime = gameTime.TotalGameTime;
+                    return;
+                }
+            }
+
             if (rightPrevDeviceButtonRect.Contains(mouse.Position))
             {
                 audioManager.SelectPreviousInputDevice();
@@ -852,6 +884,10 @@ public class Visualizationizer : Game
             AddFocusTarget(FocusTargetType.RightSystemMode, 0, rightSystemModeButtonRect);
             AddFocusTarget(FocusTargetType.RightPrevInput, 0, rightPrevDeviceButtonRect);
             AddFocusTarget(FocusTargetType.RightNextInput, 0, rightNextDeviceButtonRect);
+            for (int i = 0; i < rightInputDeviceButtons.Length; i++)
+            {
+                AddFocusTarget(FocusTargetType.RightInputDevice, i, rightInputDeviceButtons[i]);
+            }
         }
         else
         {
@@ -1015,6 +1051,12 @@ public class Visualizationizer : Game
                     audioManager.SelectNextInputDevice();
                 }
                 break;
+            case FocusTargetType.RightInputDevice:
+                if (audioManager.CaptureSource == AudioCaptureSource.Microphone)
+                {
+                    audioManager.SelectInputDevice(target.Index);
+                }
+                break;
             case FocusTargetType.Slider:
                 break;
         }
@@ -1121,6 +1163,7 @@ public class Visualizationizer : Game
         AddHelpLabelTexture("right_system", "System");
         AddHelpLabelTexture("right_prev", "Prev Input");
         AddHelpLabelTexture("right_next", "Next Input");
+        AddHelpLabelTexture("right_inputs", "Inputs");
         for (int i = 0; i < modeLabels.Length; i++)
         {
             AddHelpLabelTexture($"mode{i}", modeLabels[i]);
@@ -1153,6 +1196,38 @@ public class Visualizationizer : Game
             }
             return CreateTextureFromBitmap(graphics.GraphicsDevice, bitmap);
         }
+    }
+
+    private Texture2D GetOrCreateInputDeviceIndexTexture(int deviceIndex)
+    {
+        if (inputDeviceIndexTextures.TryGetValue(deviceIndex, out Texture2D existingTexture) && existingTexture != null)
+        {
+            return existingTexture;
+        }
+
+        string text = (deviceIndex + 1).ToString();
+        Texture2D texture = CreateTextTexture(text, 24, 18);
+        inputDeviceIndexTextures[deviceIndex] = texture;
+        return texture;
+    }
+
+    private void SyncInputDeviceIndexTextures(int inputDeviceCount)
+    {
+        var staleKeys = inputDeviceIndexTextures.Keys.Where(k => k >= inputDeviceCount).ToList();
+        foreach (int key in staleKeys)
+        {
+            inputDeviceIndexTextures[key]?.Dispose();
+            inputDeviceIndexTextures.Remove(key);
+        }
+    }
+
+    private void DisposeInputDeviceIndexTextures()
+    {
+        foreach (var texture in inputDeviceIndexTextures.Values)
+        {
+            texture?.Dispose();
+        }
+        inputDeviceIndexTextures.Clear();
     }
 
     private void DrawControllerFocusHighlight()
@@ -1219,6 +1294,10 @@ public class Visualizationizer : Game
             DrawHelpLabel("right_system", rightSystemModeButtonRect);
             DrawHelpLabel("right_prev", rightPrevDeviceButtonRect);
             DrawHelpLabel("right_next", rightNextDeviceButtonRect);
+            if (rightInputDeviceButtons.Length > 0)
+            {
+                DrawHelpLabel("right_inputs", GetBoundingRect(rightInputDeviceButtons));
+            }
         }
     }
 
@@ -1273,6 +1352,41 @@ public class Visualizationizer : Game
         int rightDeviceRowY = rightStartY + topButtonHeight + rightRowGap;
         rightPrevDeviceButtonRect = new Rectangle(rightContentX, rightDeviceRowY, rightHalfWidth, topButtonHeight);
         rightNextDeviceButtonRect = new Rectangle(rightPrevDeviceButtonRect.Right + topButtonGap, rightDeviceRowY, rightHalfWidth, topButtonHeight);
+
+        int inputDeviceCount = audioManager?.InputDeviceCount ?? 0;
+        if (inputDeviceCount < 0)
+        {
+            inputDeviceCount = 0;
+        }
+        rightInputDeviceButtons = new Rectangle[inputDeviceCount];
+        SyncInputDeviceIndexTextures(inputDeviceCount);
+
+        int deviceGridStartY = rightDeviceRowY + topButtonHeight + rightRowGap;
+        int deviceColumns = 4;
+        int deviceRows = inputDeviceCount == 0 ? 0 : (int)Math.Ceiling(inputDeviceCount / (float)deviceColumns);
+        int deviceButtonGap = Math.Max(4, (int)(8 * uiScale));
+        int deviceButtonWidth = Math.Max(18, (rightContentWidth - ((deviceColumns - 1) * deviceButtonGap)) / deviceColumns);
+        int deviceButtonHeight = topButtonHeight;
+
+        int maxDeviceAreaHeight = Math.Max(0, viewportHeight - sidePadding - deviceGridStartY);
+        if (deviceRows > 0)
+        {
+            int neededHeight = (deviceRows * deviceButtonHeight) + ((deviceRows - 1) * deviceButtonGap);
+            if (neededHeight > maxDeviceAreaHeight)
+            {
+                int adjustedHeight = (maxDeviceAreaHeight - ((deviceRows - 1) * deviceButtonGap)) / deviceRows;
+                deviceButtonHeight = Math.Max(8, adjustedHeight);
+            }
+        }
+
+        for (int i = 0; i < inputDeviceCount; i++)
+        {
+            int row = i / deviceColumns;
+            int col = i % deviceColumns;
+            int x = rightContentX + col * (deviceButtonWidth + deviceButtonGap);
+            int y = deviceGridStartY + row * (deviceButtonHeight + deviceButtonGap);
+            rightInputDeviceButtons[i] = new Rectangle(x, y, deviceButtonWidth, deviceButtonHeight);
+        }
 
         int sliderX = sidePadding;
         int sliderWidth = Math.Max(120, sidebarWidth - (sidePadding * 2));
@@ -1575,6 +1689,26 @@ public class AudioManager
             return;
         }
         SelectedInputDevice = (SelectedInputDevice + 1) % InputDeviceCount;
+        if (CaptureSource == AudioCaptureSource.Microphone)
+        {
+            RestartCapture();
+        }
+    }
+
+    public void SelectInputDevice(int deviceIndex)
+    {
+        if (InputDeviceCount <= 0)
+        {
+            return;
+        }
+
+        int clamped = Math.Clamp(deviceIndex, 0, InputDeviceCount - 1);
+        if (SelectedInputDevice == clamped)
+        {
+            return;
+        }
+
+        SelectedInputDevice = clamped;
         if (CaptureSource == AudioCaptureSource.Microphone)
         {
             RestartCapture();

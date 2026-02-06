@@ -140,7 +140,7 @@ Before starting Section 2 code, run and confirm:
 
 - Added right-panel audio control scaffold using the same button style as the left menu.
 - Implemented audio source switching between microphone input and system loopback (`T13`).
-- Implemented microphone device cycling controls (previous/next input) with live capture restart (`T12`).
+- Implemented microphone input enumeration with explicit selectable device buttons plus previous/next cycling controls (`T12`).
 - Added profile persistence for selected audio source and selected microphone device (`T14`).
 - Manual validation completed for source switching, input cycling, and profile restore behavior.
 
@@ -160,4 +160,50 @@ Before starting Section 2 code, run and confirm:
 - Added controller activation for buttons and controller slider adjustment behavior while focused.
 - Added controller `Start` hold behavior to mirror `Space` hold for temporary overlay display.
 - Improved focus visibility on light controls with high-contrast dual-outline highlight styling.
-- Remaining gate: manual validation for controller navigation flow and fallback transitions before final stabilization pass (`T16-T17`).
+- Input conflict/debounce handling pass implemented and validated in iteration (`T16`).
+- Remaining gate: final full regression/performance matrix sign-off (`T17`).
+
+## Implementation Audit (2026-02-06)
+
+### Status Summary
+
+- `T01-T16`: implemented in code and validated in iterative manual checks.
+- `T17`: pending final end-to-end regression/performance sign-off.
+
+### Remaining Items Before Full Completion
+
+1. `T17` final sign-off matrix:
+   - execute full manual matrix across target resolutions, visual modes, media types, profile slots, and audio source/device switching.
+   - capture outcomes in this document (pass/fail notes and any residual issues).
+
+## T17 Sign-Off Matrix (Pending)
+
+1. Resolution/layout:
+   - `1280x720` pass/fail:
+   - `1920x1080` pass/fail:
+   - `2560x1440` pass/fail:
+   - `3840x2160` pass/fail:
+2. Visualization modes:
+   - Standard:
+   - MirroredMiddle:
+   - MirroredCorners:
+   - Radial:
+   - CenterColumn:
+   - Puddle:
+3. Media import/restore:
+   - SVG import + profile restore:
+   - PNG import + profile restore:
+   - JPG/JPEG import + profile restore:
+   - GIF import + profile restore:
+4. Audio source/device:
+   - Microphone mode switch:
+   - System loopback mode switch:
+   - Explicit input-device button selection:
+   - Prev/next input-device cycling:
+   - Audio source/device profile restore:
+5. Input-method handoff:
+   - Controller focus/navigation:
+   - Left/right bumper panel toggles:
+   - Controller `Start` overlay hold:
+   - Mouse fallback after controller use:
+   - Keyboard fallback after controller use:
