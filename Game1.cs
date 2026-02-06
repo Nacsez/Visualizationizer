@@ -66,6 +66,13 @@ public class Visualizationizer : Game
     private string loadedMediaPath = string.Empty;
     private AppState appState = new AppState();
     private ProfileManager profileManager = new ProfileManager();
+    private Point lastMousePosition;
+    private int lastMouseWheelValue;
+    private bool hasMouseSample = false;
+    private TimeSpan lastMouseActivityTime = TimeSpan.Zero;
+    private static readonly TimeSpan MouseHideDelay = TimeSpan.FromSeconds(2);
+    private bool showHelpOverlay = false;
+    private Dictionary<string, Texture2D> helpLabelTextures = new Dictionary<string, Texture2D>();
     public Visualizationizer()
     {
         graphics = new GraphicsDeviceManager(this);
@@ -96,42 +103,7 @@ public class Visualizationizer : Game
     protected override void Initialize()
     {
         base.Initialize();
-        sliderPosition = new Vector2(20, 100);
-        sliderPosition2 = new Vector2(20, 150);
-        sliderPosition3 = new Vector2(20, 200);
-        sliderPosition4 = new Vector2(20, 250);
-        sliderPosition5 = new Vector2(20, 300); 
-        svgPosition = new Vector2(GraphicsDevice.Viewport.Width / 2, GraphicsDevice.Viewport.Height / 2);
-        sidebarArea = new Rectangle(0, 0, sidebarWidth, GraphicsDevice.Viewport.Height);
-        closeButtonRect = new Rectangle(20, 20, 100, 35);
-        svgButtonRect = new Rectangle(135, 20, 100, 35);
-        int buttonSize = 45;  // Size of each color toggle button
-        int padding = 16;     // Padding between buttons
-        int startX = 45;      // Starting X offset
-        int startY = 350;     // Starting Y offset from the top of the sidebar
-        int rows = 11;
-        int columns = 3;
-        colorButtons = new Rectangle[rows * columns]; // Initialize for 33 buttons
-        for (int i = 0; i < colorButtons.Length; i++)
-        {
-            int row = i / columns;
-            int col = i % columns;
-            int x = startX + col * (buttonSize + padding);
-            int y = startY + row * (buttonSize + padding);
-            colorButtons[i] = new Rectangle(x, y, buttonSize, buttonSize);
-        }
-        colorButtonTexture = CreateColorTexture(buttonSize, buttonSize, Color.White);  // White used as a mask for color
-        int modeButtonWidth = 90;
-        int modeButtonHeight = 35;
-        int modeStartY = 1040; // Y adjustment for mode buttons
-        int modePadding = 15;
-        modeButtonTexture = CreateColorTexture(modeButtonWidth, modeButtonHeight, Color.White); // This space has been left intentionally white for now
-        for (int i = 0; i < modeButtons.Length; i++)
-        {
-            int row = i / 2; // Arrange in three rows
-            int col = i % 2; // Two columns
-            modeButtons[i] = new Rectangle(30 + col * (modeButtonWidth + modePadding), modeStartY + row * (modeButtonHeight + modePadding), modeButtonWidth, modeButtonHeight);
-        }
+        RecalculateUILayout();
         LoadDefaultSvg();
         svgPosition = new Vector2(GraphicsDevice.Viewport.Width / 2, GraphicsDevice.Viewport.Height / 2);
     }
@@ -291,27 +263,29 @@ public class Visualizationizer : Game
         };
         ApplyInitialSettings();
         SyncAppStateFromRuntime();
-        sidebarTexture = CreateColorTexture(sidebarWidth, GraphicsDevice.Viewport.Height, new Color(100, 100, 244));
-        closeButtonTexture = CreateColorTexture(80, 30, new Color(245, 245, 245));
-        sliderTexture = CreateColorTexture(220, 20, Color.Gray);
-        sliderTexture2 = CreateColorTexture(220, 20, Color.Gray);
-        sliderTexture3 = CreateColorTexture(220, 20, Color.Gray);
-        sliderTexture4 = CreateColorTexture(220, 20, Color.Gray);
-        sliderTexture5 = CreateColorTexture(220, 20, Color.Gray);
+        RecalculateUILayout();
+    }
+    protected override void UnloadContent()
+    {
+        foreach (var texture in helpLabelTextures.Values)
+        {
+            texture?.Dispose();
+        }
+        helpLabelTextures.Clear();
+        audioManager?.Stop();
+        base.UnloadContent();
     }
     private void OnResize(object sender, EventArgs e)
     {
         graphics.PreferredBackBufferWidth = Window.ClientBounds.Width;
         graphics.PreferredBackBufferHeight = Window.ClientBounds.Height;
         graphics.ApplyChanges();
-        // Update any dependent on viewport dimensions
-        int viewportWidth = GraphicsDevice.Viewport.Width;
-        int viewportHeight = GraphicsDevice.Viewport.Height;
-        sidebarArea.Height = GraphicsDevice.Viewport.Height;
+        RecalculateUILayout();
     }
     protected override void Update(GameTime gameTime)
     {
         MouseState mouse = Mouse.GetState();
+        UpdateMouseVisibility(mouse, gameTime);
         if (!sidebarVisible && mouse.X <= 5)
         {
             sidebarVisible = true;
@@ -388,6 +362,7 @@ public class Visualizationizer : Game
         }
         //Get Keyboard Key Presses
         KeyboardState keyboardState = Keyboard.GetState();
+        showHelpOverlay = keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Space);
         HandleProfileHotkeys(keyboardState);
         //Press ESC to Exit Program
         if (keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Escape))
@@ -403,6 +378,7 @@ public class Visualizationizer : Game
         if (keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.F11))
         {
             graphics.ToggleFullScreen();
+            RecalculateUILayout();
         }
         //Imported SVG dragging logic
         if (svgTexture != null)
@@ -523,6 +499,10 @@ public class Visualizationizer : Game
                 Color drawColor = colorToggles[i] ? colors[i] : Color.Black; // Use black when toggled off
                 spriteBatch.Draw(colorButtonTexture, colorButtons[i], drawColor);
             }
+            if (showHelpOverlay)
+            {
+                DrawHelpOverlay();
+            }
         }
         // End the sprite batch operations
         spriteBatch.End();
@@ -554,6 +534,245 @@ public class Visualizationizer : Game
             sliderVal = MathHelper.Clamp(sliderVal, minVal, maxVal);
             updateAction(sliderVal);
         }
+    }
+
+    private void UpdateMouseVisibility(MouseState mouse, GameTime gameTime)
+    {
+        bool moved = !hasMouseSample
+            || mouse.Position != lastMousePosition
+            || mouse.ScrollWheelValue != lastMouseWheelValue;
+
+        bool buttonPressed = mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed
+            || mouse.RightButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed
+            || mouse.MiddleButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed
+            || mouse.XButton1 == Microsoft.Xna.Framework.Input.ButtonState.Pressed
+            || mouse.XButton2 == Microsoft.Xna.Framework.Input.ButtonState.Pressed;
+
+        if (moved || buttonPressed)
+        {
+            lastMouseActivityTime = gameTime.TotalGameTime;
+            if (!IsMouseVisible)
+            {
+                IsMouseVisible = true;
+            }
+        }
+        else if (IsMouseVisible && gameTime.TotalGameTime - lastMouseActivityTime >= MouseHideDelay)
+        {
+            IsMouseVisible = false;
+        }
+
+        hasMouseSample = true;
+        lastMousePosition = mouse.Position;
+        lastMouseWheelValue = mouse.ScrollWheelValue;
+    }
+
+    private void InitializeHelpOverlayTextures()
+    {
+        foreach (var texture in helpLabelTextures.Values)
+        {
+            texture?.Dispose();
+        }
+        helpLabelTextures.Clear();
+
+        AddHelpLabelTexture("close", "Close");
+        AddHelpLabelTexture("load", "Load SVG");
+        AddHelpLabelTexture("slider1", "Amplitude");
+        AddHelpLabelTexture("slider2", "Cutoff");
+        AddHelpLabelTexture("slider3", "FFT Bins");
+        AddHelpLabelTexture("slider4", "Image Size");
+        AddHelpLabelTexture("slider5", "Image React");
+        AddHelpLabelTexture("colors", "Colors");
+        for (int i = 0; i < modeLabels.Length; i++)
+        {
+            AddHelpLabelTexture($"mode{i}", modeLabels[i]);
+        }
+    }
+
+    private void AddHelpLabelTexture(string key, string text)
+    {
+        int width = Math.Max(72, text.Length * 11);
+        helpLabelTextures[key] = CreateTextTexture(text, width, 24);
+    }
+
+    private Texture2D CreateTextTexture(string text, int width, int height)
+    {
+        using (var bitmap = new System.Drawing.Bitmap(width, height))
+        {
+            using (var gfx = System.Drawing.Graphics.FromImage(bitmap))
+            {
+                gfx.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                gfx.Clear(System.Drawing.Color.Transparent);
+                gfx.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                using (var font = new System.Drawing.Font("Segoe UI", 12, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Pixel))
+                using (var brush = new System.Drawing.SolidBrush(System.Drawing.Color.White))
+                using (var format = new System.Drawing.StringFormat())
+                {
+                    format.Alignment = System.Drawing.StringAlignment.Center;
+                    format.LineAlignment = System.Drawing.StringAlignment.Center;
+                    gfx.DrawString(text, font, brush, new System.Drawing.RectangleF(0, 0, width, height), format);
+                }
+            }
+            return CreateTextureFromBitmap(graphics.GraphicsDevice, bitmap);
+        }
+    }
+
+    private void DrawHelpOverlay()
+    {
+        spriteBatch.Draw(closeButtonTexture, sidebarArea, new Color(0, 0, 0, 120));
+        DrawHelpLabel("close", closeButtonRect);
+        DrawHelpLabel("load", svgButtonRect);
+        DrawHelpLabel("slider1", new Rectangle(sliderPosition.ToPoint(), new Point(sliderTexture.Width, sliderTexture.Height)));
+        DrawHelpLabel("slider2", new Rectangle(sliderPosition2.ToPoint(), new Point(sliderTexture2.Width, sliderTexture2.Height)));
+        DrawHelpLabel("slider3", new Rectangle(sliderPosition3.ToPoint(), new Point(sliderTexture3.Width, sliderTexture3.Height)));
+        DrawHelpLabel("slider4", new Rectangle(sliderPosition4.ToPoint(), new Point(sliderTexture.Width, sliderTexture.Height)));
+        DrawHelpLabel("slider5", new Rectangle(sliderPosition5.ToPoint(), new Point(sliderTexture5.Width, sliderTexture5.Height)));
+        DrawHelpLabel("colors", GetBoundingRect(colorButtons));
+        for (int i = 0; i < modeButtons.Length; i++)
+        {
+            DrawHelpLabel($"mode{i}", modeButtons[i]);
+        }
+    }
+
+    private void DrawHelpLabel(string key, Rectangle anchorRect)
+    {
+        if (!helpLabelTextures.TryGetValue(key, out Texture2D labelTexture))
+        {
+            return;
+        }
+        int labelX = anchorRect.Center.X - (labelTexture.Width / 2);
+        int labelY = anchorRect.Center.Y - (labelTexture.Height / 2);
+        Rectangle backRect = new Rectangle(anchorRect.X, anchorRect.Y, anchorRect.Width, anchorRect.Height);
+        spriteBatch.Draw(closeButtonTexture, backRect, new Color(0, 0, 0, 180));
+        spriteBatch.Draw(labelTexture, new Vector2(labelX, labelY), Color.White);
+    }
+
+    private Rectangle GetBoundingRect(Rectangle[] rectangles)
+    {
+        int minX = rectangles.Min(r => r.Left);
+        int minY = rectangles.Min(r => r.Top);
+        int maxX = rectangles.Max(r => r.Right);
+        int maxY = rectangles.Max(r => r.Bottom);
+        return new Rectangle(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    private void RecalculateUILayout()
+    {
+        int viewportHeight = GraphicsDevice.Viewport.Height;
+        float uiScale = MathHelper.Clamp(viewportHeight / 1200f, 0.60f, 1.35f);
+
+        sidebarWidth = Math.Max(200, (int)(260 * uiScale));
+        sidebarArea = new Rectangle(0, 0, sidebarWidth, viewportHeight);
+
+        int sidePadding = Math.Max(12, (int)(20 * uiScale));
+        int topButtonGap = Math.Max(8, (int)(15 * uiScale));
+        int topButtonHeight = Math.Max(22, (int)(35 * uiScale));
+        int topButtonWidth = Math.Max(60, (sidebarWidth - (sidePadding * 2) - topButtonGap) / 2);
+        closeButtonRect = new Rectangle(sidePadding, sidePadding, topButtonWidth, topButtonHeight);
+        svgButtonRect = new Rectangle(closeButtonRect.Right + topButtonGap, sidePadding, topButtonWidth, topButtonHeight);
+
+        int sliderX = sidePadding;
+        int sliderWidth = Math.Max(120, sidebarWidth - (sidePadding * 2));
+        int sliderHeight = Math.Max(12, (int)(20 * uiScale));
+        int sliderStartY = Math.Max(sidePadding + topButtonHeight + 30, (int)(100 * uiScale));
+        int sliderGap = Math.Max(18, (int)(50 * uiScale));
+        sliderPosition = new Vector2(sliderX, sliderStartY);
+        sliderPosition2 = new Vector2(sliderX, sliderStartY + sliderGap);
+        sliderPosition3 = new Vector2(sliderX, sliderStartY + (sliderGap * 2));
+        sliderPosition4 = new Vector2(sliderX, sliderStartY + (sliderGap * 3));
+        sliderPosition5 = new Vector2(sliderX, sliderStartY + (sliderGap * 4));
+
+        int modeButtonGapX = topButtonGap;
+        int modeButtonGapY = Math.Max(8, (int)(15 * uiScale));
+        int modeButtonHeight = Math.Max(18, (int)(35 * uiScale));
+        int modeButtonWidth = Math.Max(50, (sidebarWidth - (sidePadding * 2) - modeButtonGapX) / 2);
+
+        int modeRows = 3;
+        int modeAreaHeight = (modeRows * modeButtonHeight) + ((modeRows - 1) * modeButtonGapY);
+        int modeBottomPadding = sidePadding;
+        int minGapFromSliders = Math.Max(8, (int)(18 * uiScale));
+        int gapColorsToModes = Math.Max(8, (int)(14 * uiScale));
+        int sliderBottom = (int)sliderPosition5.Y + sliderHeight;
+        int colorAreaTop = sliderBottom + minGapFromSliders;
+        int modeStartY = viewportHeight - modeBottomPadding - modeAreaHeight;
+        int availableColorHeight = modeStartY - gapColorsToModes - colorAreaTop;
+        if (availableColorHeight < 1)
+        {
+            availableColorHeight = 1;
+        }
+
+        int rows = 11;
+        int columns = 3;
+        int minColorPadding = 1;
+        int baseColorSize = Math.Max(20, (int)(45 * uiScale));
+        int baseColorPadding = Math.Max(6, (int)(16 * uiScale));
+        int maxSizeByWidth = Math.Max(4, (sidebarWidth - (sidePadding * 2) - (2 * minColorPadding)) / columns);
+        int colorButtonWidth = Math.Min(baseColorSize, maxSizeByWidth);
+        int colorPaddingX = Math.Min(baseColorPadding, Math.Max(1, (int)(colorButtonWidth * 0.30f)));
+        int colorPaddingY = Math.Max(1, (int)(colorPaddingX * 0.75f));
+        int colorButtonHeight = colorButtonWidth;
+        int colorGridHeight = (rows * colorButtonHeight) + ((rows - 1) * colorPaddingY);
+        if (colorGridHeight > availableColorHeight)
+        {
+            colorPaddingY = minColorPadding;
+            colorButtonHeight = Math.Max(4, (availableColorHeight - ((rows - 1) * colorPaddingY)) / rows);
+            colorGridHeight = (rows * colorButtonHeight) + ((rows - 1) * colorPaddingY);
+        }
+
+        int colorGridWidth = (columns * colorButtonWidth) + ((columns - 1) * colorPaddingX);
+        int colorStartX = Math.Max(10, (sidebarWidth - colorGridWidth) / 2);
+        int colorStartY = colorAreaTop + Math.Max(0, (availableColorHeight - colorGridHeight) / 2);
+        for (int i = 0; i < colorButtons.Length; i++)
+        {
+            int row = i / columns;
+            int col = i % columns;
+            int x = colorStartX + col * (colorButtonWidth + colorPaddingX);
+            int y = colorStartY + row * (colorButtonHeight + colorPaddingY);
+            colorButtons[i] = new Rectangle(x, y, colorButtonWidth, colorButtonHeight);
+        }
+
+        int colorBottom = colorStartY + colorGridHeight;
+        if (colorBottom + gapColorsToModes > modeStartY)
+        {
+            modeStartY = colorBottom + gapColorsToModes;
+        }
+
+        for (int i = 0; i < modeButtons.Length; i++)
+        {
+            int row = i / 2;
+            int col = i % 2;
+            int x = sidePadding + col * (modeButtonWidth + modeButtonGapX);
+            int y = modeStartY + row * (modeButtonHeight + modeButtonGapY);
+            modeButtons[i] = new Rectangle(x, y, modeButtonWidth, modeButtonHeight);
+        }
+
+        if (spriteBatch != null)
+        {
+            RebuildUiTextures(sliderWidth, sliderHeight, topButtonWidth, topButtonHeight, modeButtonWidth, modeButtonHeight, colorButtonWidth);
+        }
+    }
+
+    private void RebuildUiTextures(int sliderWidth, int sliderHeight, int topButtonWidth, int topButtonHeight, int modeButtonWidth, int modeButtonHeight, int colorButtonSize)
+    {
+        sidebarTexture?.Dispose();
+        closeButtonTexture?.Dispose();
+        sliderTexture?.Dispose();
+        sliderTexture2?.Dispose();
+        sliderTexture3?.Dispose();
+        sliderTexture4?.Dispose();
+        sliderTexture5?.Dispose();
+        modeButtonTexture?.Dispose();
+        colorButtonTexture?.Dispose();
+
+        sidebarTexture = CreateColorTexture(sidebarWidth, GraphicsDevice.Viewport.Height, new Color(100, 100, 244));
+        closeButtonTexture = CreateColorTexture(topButtonWidth, topButtonHeight, new Color(245, 245, 245));
+        sliderTexture = CreateColorTexture(sliderWidth, sliderHeight, Color.Gray);
+        sliderTexture2 = CreateColorTexture(sliderWidth, sliderHeight, Color.Gray);
+        sliderTexture3 = CreateColorTexture(sliderWidth, sliderHeight, Color.Gray);
+        sliderTexture4 = CreateColorTexture(sliderWidth, sliderHeight, Color.Gray);
+        sliderTexture5 = CreateColorTexture(sliderWidth, sliderHeight, Color.Gray);
+        modeButtonTexture = CreateColorTexture(modeButtonWidth, modeButtonHeight, Color.White);
+        colorButtonTexture = CreateColorTexture(colorButtonSize, colorButtonSize, Color.White);
+        InitializeHelpOverlayTextures();
     }
 
     private void HandleProfileHotkeys(KeyboardState keyboardState)

@@ -42,3 +42,81 @@
 3. Full menu remains visible and usable across target resolutions.
 4. Profiles reliably save/load colors, mode, sliders, media state, and audio source.
 5. Mouse and controller inputs coexist without conflict, and quick profile switching is stable during playback.
+
+## Current Status Snapshot (2026-02-06)
+
+### Section 1: Foundation and Profiles (T01-T05)
+
+- `T01` complete: feature branch and baseline regression checklist exist.
+- `T02` complete for current phase: centralized runtime `AppState` added and wired to update/load flow.
+- `T03` complete: JSON profile format in use.
+- `T04` complete: slot-based profile save/load manager added (`1-10`).
+- `T05` complete: quick hotkeys implemented (`1-0` load, `Ctrl+1-0` save).
+
+### Section 1 Finalization Gate
+
+Before starting Section 2 code, run and confirm:
+
+1. Manual pass on `BaselineRegressionChecklist.md`.
+2. Hotkey behavior validation in fullscreen and windowed mode.
+3. Profile slot validation for:
+   - empty slot load behavior,
+   - overwritten slot behavior,
+   - missing SVG path on load behavior.
+4. Build validation (`dotnet build`) with zero errors.
+5. Commit tag for Section 1 completion checkpoint.
+
+## Build Plan: Close Section 1 and Move to Section 2
+
+### Phase A: Section 1 Closeout (0.5 day)
+
+1. Run the full checklist and record pass/fail notes.
+2. Fix any regressions found in hotkeys/profile restore.
+3. Verify profile persistence on restart with at least 3 occupied slots.
+4. Finalize Section 1 with a checkpoint commit.
+
+### Phase B: T06 Timed Mouse Hide (0.5 day)
+
+1. Add inactivity timer state (`lastMouseMoveTime`, `mouseVisible`).
+2. Detect movement delta/click and reset timer.
+3. Hide cursor after 2 seconds without movement.
+4. Instantly restore cursor on movement/button input.
+5. Validate interaction safety for sidebar reveal, slider drag, SVG drag.
+
+### Phase C: T07 Space-Hold Overlay Labels (1 day)
+
+1. Add overlay visibility state (`showHelpOverlay = Space held`).
+2. Define lightweight label map for key UI elements (buttons, sliders, modes).
+3. Render overlay only while Space is held; no persistent labels.
+4. Keep style minimal so base interface remains text-light.
+5. Validate that overlay does not block clicks or drag interaction.
+
+### Phase D: T08 Resolution-Aware Layout Engine (1.5 days)
+
+1. Create reference-resolution layout constants (for example: 1800x1200 baseline).
+2. Convert hard-coded menu/button/slider rectangles into computed layout functions.
+3. Recompute layout on startup, fullscreen toggle, and resize event.
+4. Ensure sidebar and all controls fit within low-height viewports.
+5. Validate on multiple resolutions: `1280x720`, `1920x1080`, `2560x1440`, and `3840x2160`.
+
+### Exit Criteria to Start Section 3
+
+1. T06-T08 merged and stable.
+2. No regressions in profile hotkeys/save-load flow.
+3. Menu fully visible and usable at target resolutions.
+4. Space overlay behaves as hold-to-show only.
+
+## Progress Update (2026-02-06)
+
+- `T06` implemented in code: cursor auto-hides after 2s inactivity and reappears immediately on movement/click/scroll.
+- `T07` implemented in code: Space-hold overlay labels render only while key is held.
+- `T08` implemented in code: sidebar/menu layout now recalculates from viewport height and rebuilds control geometry/textures on load, resize, and fullscreen toggle.
+- Overlay polish complete: help-label shading now matches the size of each target control.
+- Small-window polish complete: color grid now compresses primarily in vertical dimension while preserving horizontal alignment/spacing for better usability.
+- Manual validation pass completed for Section 2 behavior.
+
+## Section Completion (2026-02-06)
+
+- Section 1 (`T01-T05`) complete.
+- Section 2 (`T06-T08`) complete and validated.
+- Next active section: Section 3 (`T09-T11`) Media Pipeline Expansion.
