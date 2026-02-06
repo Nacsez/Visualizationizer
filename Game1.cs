@@ -15,6 +15,41 @@ using System.IO;
 
 public class Visualizationizer : Game
 {
+    private enum InputMode
+    {
+        MouseKeyboard,
+        Controller
+    }
+
+    private enum FocusDirection
+    {
+        Left,
+        Right,
+        Up,
+        Down
+    }
+
+    private enum FocusTargetType
+    {
+        LeftClose,
+        LoadMedia,
+        Slider,
+        Color,
+        Mode,
+        RightClose,
+        RightMicMode,
+        RightSystemMode,
+        RightPrevInput,
+        RightNextInput
+    }
+
+    private struct FocusTarget
+    {
+        public FocusTargetType Type;
+        public int Index;
+        public Rectangle Rect;
+    }
+
     private GraphicsDeviceManager graphics;
     private Microsoft.Xna.Framework.Graphics.SpriteBatch spriteBatch;
     private Rectangle sidebarArea;
@@ -80,7 +115,15 @@ public class Visualizationizer : Game
     private static readonly TimeSpan MouseHideDelay = TimeSpan.FromSeconds(2);
     private bool showHelpOverlay = false;
     private Dictionary<string, Texture2D> helpLabelTextures = new Dictionary<string, Texture2D>();
+    private Texture2D focusHighlightTexture;
     private const float StandardImportScale = 0.35f;
+    private InputMode currentInputMode = InputMode.MouseKeyboard;
+    private GamePadState previousGamePadState;
+    private bool controllerActiveOnRightPanel = false;
+    private List<FocusTarget> controllerFocusTargets = new List<FocusTarget>();
+    private int focusedControllerTargetIndex = -1;
+    private bool controllerFocusVisible = false;
+    private bool controllerHelpOverlayHeld = false;
     public Visualizationizer()
     {
         graphics = new GraphicsDeviceManager(this);
@@ -277,6 +320,8 @@ public class Visualizationizer : Game
         ApplyInitialSettings();
         SyncAppStateFromRuntime();
         RecalculateUILayout();
+        focusHighlightTexture?.Dispose();
+        focusHighlightTexture = CreateColorTexture(1, 1, Color.White);
     }
     protected override void UnloadContent()
     {
@@ -285,6 +330,8 @@ public class Visualizationizer : Game
             texture?.Dispose();
         }
         helpLabelTextures.Clear();
+        focusHighlightTexture?.Dispose();
+        focusHighlightTexture = null;
         audioManager?.Stop();
         base.UnloadContent();
     }
@@ -323,6 +370,9 @@ public class Visualizationizer : Game
         {
             HandleRightPanelInteraction(mouse, gameTime);
         }
+
+        UpdateControllerInput(gameTime);
+
         for (int i = 0; i < colorButtons.Length; i++)
         {
             if (colorButtons[i].Contains(mouse.Position) && mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed && lastButtonPressTime + TimeSpan.FromMilliseconds(250) < gameTime.TotalGameTime)
@@ -391,7 +441,8 @@ public class Visualizationizer : Game
         }
         //Get Keyboard Key Presses
         KeyboardState keyboardState = Keyboard.GetState();
-        showHelpOverlay = keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Space);
+        UpdateKeyboardInputMode(keyboardState);
+        showHelpOverlay = keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Space) || controllerHelpOverlayHeld;
         HandleProfileHotkeys(keyboardState);
         //Press ESC to Exit Program
         if (keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Escape))
@@ -544,6 +595,7 @@ public class Visualizationizer : Game
             spriteBatch.Draw(closeButtonTexture, rightPrevDeviceButtonRect, deviceButtonColor);
             spriteBatch.Draw(closeButtonTexture, rightNextDeviceButtonRect, deviceButtonColor);
         }
+        DrawControllerFocusHighlight();
         if (showHelpOverlay)
         {
             DrawHelpOverlay();
@@ -624,6 +676,396 @@ public class Visualizationizer : Game
         }
     }
 
+    private void UpdateKeyboardInputMode(KeyboardState keyboardState)
+    {
+        foreach (var key in keyboardState.GetPressedKeys())
+        {
+            if (previousKeyboardState.IsKeyUp(key))
+            {
+                if (currentInputMode != InputMode.MouseKeyboard)
+                {
+                    currentInputMode = InputMode.MouseKeyboard;
+                    controllerFocusVisible = false;
+                }
+                return;
+            }
+        }
+    }
+
+    private void UpdateControllerInput(GameTime gameTime)
+    {
+        GamePadState gamePadState = GamePad.GetState(PlayerIndex.One);
+        if (!gamePadState.IsConnected)
+        {
+            controllerHelpOverlayHeld = false;
+            controllerFocusTargets.Clear();
+            focusedControllerTargetIndex = -1;
+            controllerFocusVisible = false;
+            previousGamePadState = gamePadState;
+            return;
+        }
+
+        controllerHelpOverlayHeld = gamePadState.IsButtonDown(Buttons.Start);
+
+        bool hasControllerActivity = HasControllerActivity(gamePadState);
+        if (hasControllerActivity)
+        {
+            currentInputMode = InputMode.Controller;
+            controllerFocusVisible = true;
+        }
+
+        if (IsNewGamePadButtonPress(gamePadState, Buttons.LeftShoulder))
+        {
+            sidebarVisible = !sidebarVisible;
+            controllerActiveOnRightPanel = false;
+            currentInputMode = InputMode.Controller;
+            controllerFocusVisible = true;
+        }
+        if (IsNewGamePadButtonPress(gamePadState, Buttons.RightShoulder))
+        {
+            rightSidebarVisible = !rightSidebarVisible;
+            controllerActiveOnRightPanel = true;
+            currentInputMode = InputMode.Controller;
+            controllerFocusVisible = true;
+        }
+
+        if (currentInputMode == InputMode.Controller)
+        {
+            RebuildControllerFocusTargets();
+
+            if (controllerFocusTargets.Count > 0)
+            {
+                bool navLeft = IsNewGamePadButtonPress(gamePadState, Buttons.DPadLeft)
+                    || IsNewStickDirection(gamePadState.ThumbSticks.Left.X, previousGamePadState.ThumbSticks.Left.X, -1);
+                bool navRight = IsNewGamePadButtonPress(gamePadState, Buttons.DPadRight)
+                    || IsNewStickDirection(gamePadState.ThumbSticks.Left.X, previousGamePadState.ThumbSticks.Left.X, 1);
+                bool navUp = IsNewGamePadButtonPress(gamePadState, Buttons.DPadUp)
+                    || IsNewStickDirection(gamePadState.ThumbSticks.Left.Y, previousGamePadState.ThumbSticks.Left.Y, 1);
+                bool navDown = IsNewGamePadButtonPress(gamePadState, Buttons.DPadDown)
+                    || IsNewStickDirection(gamePadState.ThumbSticks.Left.Y, previousGamePadState.ThumbSticks.Left.Y, -1);
+
+                FocusTarget focusedTarget = controllerFocusTargets[focusedControllerTargetIndex];
+                bool focusedSlider = focusedTarget.Type == FocusTargetType.Slider;
+
+                if (focusedSlider && navLeft)
+                {
+                    AdjustFocusedSlider(-1);
+                }
+                else if (focusedSlider && navRight)
+                {
+                    AdjustFocusedSlider(1);
+                }
+                else
+                {
+                    if (navLeft) MoveControllerFocus(FocusDirection.Left);
+                    if (navRight) MoveControllerFocus(FocusDirection.Right);
+                }
+
+                if (navUp) MoveControllerFocus(FocusDirection.Up);
+                if (navDown) MoveControllerFocus(FocusDirection.Down);
+
+                if (IsNewGamePadButtonPress(gamePadState, Buttons.A))
+                {
+                    ActivateFocusedControllerTarget(gameTime);
+                }
+            }
+            else
+            {
+                controllerFocusVisible = false;
+            }
+        }
+
+        previousGamePadState = gamePadState;
+    }
+
+    private bool HasControllerActivity(GamePadState gamePadState)
+    {
+        if (IsNewGamePadButtonPress(gamePadState, Buttons.A)
+            || IsNewGamePadButtonPress(gamePadState, Buttons.B)
+            || IsNewGamePadButtonPress(gamePadState, Buttons.X)
+            || IsNewGamePadButtonPress(gamePadState, Buttons.Y)
+            || IsNewGamePadButtonPress(gamePadState, Buttons.Start)
+            || IsNewGamePadButtonPress(gamePadState, Buttons.Back)
+            || IsNewGamePadButtonPress(gamePadState, Buttons.LeftShoulder)
+            || IsNewGamePadButtonPress(gamePadState, Buttons.RightShoulder)
+            || IsNewGamePadButtonPress(gamePadState, Buttons.DPadUp)
+            || IsNewGamePadButtonPress(gamePadState, Buttons.DPadDown)
+            || IsNewGamePadButtonPress(gamePadState, Buttons.DPadLeft)
+            || IsNewGamePadButtonPress(gamePadState, Buttons.DPadRight))
+        {
+            return true;
+        }
+
+        const float threshold = 0.50f;
+        return (Math.Abs(gamePadState.ThumbSticks.Left.X) > threshold && Math.Abs(previousGamePadState.ThumbSticks.Left.X) <= threshold)
+            || (Math.Abs(gamePadState.ThumbSticks.Left.Y) > threshold && Math.Abs(previousGamePadState.ThumbSticks.Left.Y) <= threshold);
+    }
+
+    private bool IsNewGamePadButtonPress(GamePadState gamePadState, Buttons button)
+    {
+        return gamePadState.IsButtonDown(button) && previousGamePadState.IsButtonUp(button);
+    }
+
+    private static bool IsNewStickDirection(float currentAxis, float previousAxis, int direction)
+    {
+        const float threshold = 0.50f;
+        if (direction < 0)
+        {
+            return currentAxis < -threshold && previousAxis >= -threshold;
+        }
+        return currentAxis > threshold && previousAxis <= threshold;
+    }
+
+    private void RebuildControllerFocusTargets()
+    {
+        FocusTargetType previousType = FocusTargetType.LeftClose;
+        int previousIndex = 0;
+        bool hasPreviousFocus = focusedControllerTargetIndex >= 0 && focusedControllerTargetIndex < controllerFocusTargets.Count;
+        if (hasPreviousFocus)
+        {
+            previousType = controllerFocusTargets[focusedControllerTargetIndex].Type;
+            previousIndex = controllerFocusTargets[focusedControllerTargetIndex].Index;
+        }
+
+        controllerFocusTargets.Clear();
+        bool useRightPanel = controllerActiveOnRightPanel;
+        if (useRightPanel && !rightSidebarVisible)
+        {
+            useRightPanel = false;
+        }
+        if (!useRightPanel && !sidebarVisible && rightSidebarVisible)
+        {
+            useRightPanel = true;
+        }
+
+        if (!sidebarVisible && !rightSidebarVisible)
+        {
+            focusedControllerTargetIndex = -1;
+            controllerFocusVisible = false;
+            return;
+        }
+
+        if (useRightPanel)
+        {
+            AddFocusTarget(FocusTargetType.RightClose, 0, rightCloseButtonRect);
+            AddFocusTarget(FocusTargetType.RightMicMode, 0, rightMicModeButtonRect);
+            AddFocusTarget(FocusTargetType.RightSystemMode, 0, rightSystemModeButtonRect);
+            AddFocusTarget(FocusTargetType.RightPrevInput, 0, rightPrevDeviceButtonRect);
+            AddFocusTarget(FocusTargetType.RightNextInput, 0, rightNextDeviceButtonRect);
+        }
+        else
+        {
+            AddFocusTarget(FocusTargetType.LeftClose, 0, closeButtonRect);
+            AddFocusTarget(FocusTargetType.LoadMedia, 0, svgButtonRect);
+            AddFocusTarget(FocusTargetType.Slider, 0, new Rectangle(sliderPosition.ToPoint(), new Point(sliderTexture.Width, sliderTexture.Height)));
+            AddFocusTarget(FocusTargetType.Slider, 1, new Rectangle(sliderPosition2.ToPoint(), new Point(sliderTexture2.Width, sliderTexture2.Height)));
+            AddFocusTarget(FocusTargetType.Slider, 2, new Rectangle(sliderPosition3.ToPoint(), new Point(sliderTexture3.Width, sliderTexture3.Height)));
+            AddFocusTarget(FocusTargetType.Slider, 3, new Rectangle(sliderPosition4.ToPoint(), new Point(sliderTexture.Width, sliderTexture.Height)));
+            AddFocusTarget(FocusTargetType.Slider, 4, new Rectangle(sliderPosition5.ToPoint(), new Point(sliderTexture5.Width, sliderTexture5.Height)));
+            for (int i = 0; i < colorButtons.Length; i++)
+            {
+                AddFocusTarget(FocusTargetType.Color, i, colorButtons[i]);
+            }
+            for (int i = 0; i < modeButtons.Length; i++)
+            {
+                AddFocusTarget(FocusTargetType.Mode, i, modeButtons[i]);
+            }
+        }
+
+        focusedControllerTargetIndex = 0;
+        for (int i = 0; i < controllerFocusTargets.Count; i++)
+        {
+            if (controllerFocusTargets[i].Type == previousType && controllerFocusTargets[i].Index == previousIndex)
+            {
+                focusedControllerTargetIndex = i;
+                break;
+            }
+        }
+        controllerFocusVisible = controllerFocusTargets.Count > 0;
+    }
+
+    private void AddFocusTarget(FocusTargetType type, int index, Rectangle rect)
+    {
+        controllerFocusTargets.Add(new FocusTarget
+        {
+            Type = type,
+            Index = index,
+            Rect = rect
+        });
+    }
+
+    private void MoveControllerFocus(FocusDirection direction)
+    {
+        int nextIndex = FindNextControllerFocusIndex(direction);
+        if (nextIndex >= 0)
+        {
+            focusedControllerTargetIndex = nextIndex;
+        }
+    }
+
+    private int FindNextControllerFocusIndex(FocusDirection direction)
+    {
+        if (focusedControllerTargetIndex < 0 || focusedControllerTargetIndex >= controllerFocusTargets.Count)
+        {
+            return controllerFocusTargets.Count > 0 ? 0 : -1;
+        }
+
+        var currentRect = controllerFocusTargets[focusedControllerTargetIndex].Rect;
+        var currentCenter = currentRect.Center;
+        int bestIndex = -1;
+        float bestScore = float.MaxValue;
+
+        for (int i = 0; i < controllerFocusTargets.Count; i++)
+        {
+            if (i == focusedControllerTargetIndex)
+            {
+                continue;
+            }
+
+            var targetCenter = controllerFocusTargets[i].Rect.Center;
+            float dx = targetCenter.X - currentCenter.X;
+            float dy = targetCenter.Y - currentCenter.Y;
+
+            float primary;
+            float secondary;
+            switch (direction)
+            {
+                case FocusDirection.Left:
+                    if (dx >= 0) continue;
+                    primary = -dx;
+                    secondary = Math.Abs(dy);
+                    break;
+                case FocusDirection.Right:
+                    if (dx <= 0) continue;
+                    primary = dx;
+                    secondary = Math.Abs(dy);
+                    break;
+                case FocusDirection.Up:
+                    if (dy >= 0) continue;
+                    primary = -dy;
+                    secondary = Math.Abs(dx);
+                    break;
+                case FocusDirection.Down:
+                    if (dy <= 0) continue;
+                    primary = dy;
+                    secondary = Math.Abs(dx);
+                    break;
+                default:
+                    continue;
+            }
+
+            float score = (primary * 4f) + secondary;
+            if (score < bestScore)
+            {
+                bestScore = score;
+                bestIndex = i;
+            }
+        }
+
+        return bestIndex;
+    }
+
+    private void ActivateFocusedControllerTarget(GameTime gameTime)
+    {
+        if (focusedControllerTargetIndex < 0 || focusedControllerTargetIndex >= controllerFocusTargets.Count)
+        {
+            return;
+        }
+
+        var target = controllerFocusTargets[focusedControllerTargetIndex];
+        switch (target.Type)
+        {
+            case FocusTargetType.LeftClose:
+                sidebarVisible = false;
+                break;
+            case FocusTargetType.LoadMedia:
+                OpenMediaFileDialog();
+                break;
+            case FocusTargetType.Color:
+                if (target.Index >= 0 && target.Index < colorToggles.Length)
+                {
+                    colorToggles[target.Index] = !colorToggles[target.Index];
+                    visualizer.UpdateActiveColors(colors, colorToggles);
+                }
+                break;
+            case FocusTargetType.Mode:
+                if (target.Index >= 0 && target.Index < modeButtons.Length)
+                {
+                    visualizer.Mode = (AudioVisualizer.VisualizationMode)target.Index;
+                }
+                break;
+            case FocusTargetType.RightClose:
+                rightSidebarVisible = false;
+                break;
+            case FocusTargetType.RightMicMode:
+                audioManager.SetCaptureSource(AudioCaptureSource.Microphone);
+                break;
+            case FocusTargetType.RightSystemMode:
+                audioManager.SetCaptureSource(AudioCaptureSource.SystemLoopback);
+                break;
+            case FocusTargetType.RightPrevInput:
+                if (audioManager.CaptureSource == AudioCaptureSource.Microphone)
+                {
+                    audioManager.SelectPreviousInputDevice();
+                }
+                break;
+            case FocusTargetType.RightNextInput:
+                if (audioManager.CaptureSource == AudioCaptureSource.Microphone)
+                {
+                    audioManager.SelectNextInputDevice();
+                }
+                break;
+            case FocusTargetType.Slider:
+                break;
+        }
+
+        lastButtonPressTime = gameTime.TotalGameTime;
+    }
+
+    private void AdjustFocusedSlider(int direction)
+    {
+        if (focusedControllerTargetIndex < 0 || focusedControllerTargetIndex >= controllerFocusTargets.Count)
+        {
+            return;
+        }
+
+        var target = controllerFocusTargets[focusedControllerTargetIndex];
+        if (target.Type != FocusTargetType.Slider)
+        {
+            return;
+        }
+
+        const float step = 0.03f;
+        switch (target.Index)
+        {
+            case 0:
+                sliderValue = MathHelper.Clamp(sliderValue + (step * direction), 0.05f, 1.0f);
+                visualizer.UpdateScaleFactor(1.0f + (100f - 1.0f) * sliderValue);
+                break;
+            case 1:
+                sliderValue2 = MathHelper.Clamp(sliderValue2 + (step * direction), 0.1f, 1.0f);
+                frequencyCutoff = sliderValue2;
+                visualizer.UpdateFrequencyCutoff(frequencyCutoff);
+                break;
+            case 2:
+                sliderValue3 = MathHelper.Clamp(sliderValue3 + (step * direction), 0.1f, 1.0f);
+                int exponent = 5 + (int)((10 - 5) * sliderValue3);
+                int newFFTLength = 1 << exponent;
+                if (newFFTLength != audioManager.FftLength)
+                {
+                    audioManager.UpdateFFTLength(newFFTLength);
+                    visualizer.UpdateFFTBinCount(newFFTLength / 2);
+                }
+                break;
+            case 3:
+                svgScaleSliderValue = MathHelper.Clamp(svgScaleSliderValue + (step * direction), 0.01f, 1.0f);
+                break;
+            case 4:
+                perturbationSliderValue = MathHelper.Clamp(perturbationSliderValue + (step * direction), 0.0f, 1.0f);
+                break;
+        }
+    }
+
     private void UpdateMouseVisibility(MouseState mouse, GameTime gameTime)
     {
         bool moved = !hasMouseSample
@@ -639,6 +1081,11 @@ public class Visualizationizer : Game
         if (moved || buttonPressed)
         {
             lastMouseActivityTime = gameTime.TotalGameTime;
+            if (currentInputMode != InputMode.MouseKeyboard)
+            {
+                currentInputMode = InputMode.MouseKeyboard;
+                controllerFocusVisible = false;
+            }
             if (!IsMouseVisible)
             {
                 IsMouseVisible = true;
@@ -706,6 +1153,43 @@ public class Visualizationizer : Game
             }
             return CreateTextureFromBitmap(graphics.GraphicsDevice, bitmap);
         }
+    }
+
+    private void DrawControllerFocusHighlight()
+    {
+        if (!controllerFocusVisible
+            || currentInputMode != InputMode.Controller
+            || focusHighlightTexture == null
+            || focusedControllerTargetIndex < 0
+            || focusedControllerTargetIndex >= controllerFocusTargets.Count)
+        {
+            return;
+        }
+
+        Rectangle rect = controllerFocusTargets[focusedControllerTargetIndex].Rect;
+        Rectangle fillRect = new Rectangle(rect.X, rect.Y, rect.Width, rect.Height);
+        spriteBatch.Draw(focusHighlightTexture, fillRect, new Color(0, 0, 0, 30));
+
+        DrawFocusBorder(new Rectangle(rect.X - 2, rect.Y - 2, rect.Width + 4, rect.Height + 4), 3, new Color(0, 0, 0, 220));
+        DrawFocusBorder(rect, 2, new Color(100, 255, 220, 255));
+    }
+
+    private void DrawFocusBorder(Rectangle rect, int thickness, Color color)
+    {
+        if (rect.Width <= 0 || rect.Height <= 0 || thickness <= 0)
+        {
+            return;
+        }
+
+        Rectangle top = new Rectangle(rect.X, rect.Y, rect.Width, thickness);
+        Rectangle bottom = new Rectangle(rect.X, rect.Bottom - thickness, rect.Width, thickness);
+        Rectangle left = new Rectangle(rect.X, rect.Y, thickness, rect.Height);
+        Rectangle right = new Rectangle(rect.Right - thickness, rect.Y, thickness, rect.Height);
+
+        spriteBatch.Draw(focusHighlightTexture, top, color);
+        spriteBatch.Draw(focusHighlightTexture, bottom, color);
+        spriteBatch.Draw(focusHighlightTexture, left, color);
+        spriteBatch.Draw(focusHighlightTexture, right, color);
     }
 
     private void DrawHelpOverlay()

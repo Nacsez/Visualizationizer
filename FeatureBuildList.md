@@ -151,3 +151,13 @@ Before starting Section 2 code, run and confirm:
 - Section 3 (`T09-T11`) complete and validated.
 - Section 4 (`T12-T14`) complete and validated.
 - Next active section: Section 5 (`T15-T17`) Controller + Final Stabilization.
+
+## Section 5 Progress (2026-02-06)
+
+- Added controller-detected input mode switching with mouse/keyboard fallback behavior.
+- Added bumper controls: left bumper toggles left panel open/close, right bumper toggles right panel open/close.
+- Added controller focus system for menu controls with directional navigation and visible highlight.
+- Added controller activation for buttons and controller slider adjustment behavior while focused.
+- Added controller `Start` hold behavior to mirror `Space` hold for temporary overlay display.
+- Improved focus visibility on light controls with high-contrast dual-outline highlight styling.
+- Remaining gate: manual validation for controller navigation flow and fallback transitions before final stabilization pass (`T16-T17`).
