@@ -10,7 +10,6 @@ using NAudio.Dsp;  // Include for FFT
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.Windows.Forms;
-using Svg;
 using System.IO;
 
 public class Visualizationizer : Game
@@ -73,6 +72,7 @@ public class Visualizationizer : Game
     private static readonly TimeSpan MouseHideDelay = TimeSpan.FromSeconds(2);
     private bool showHelpOverlay = false;
     private Dictionary<string, Texture2D> helpLabelTextures = new Dictionary<string, Texture2D>();
+    private const float StandardImportScale = 0.35f;
     public Visualizationizer()
     {
         graphics = new GraphicsDeviceManager(this);
@@ -104,63 +104,74 @@ public class Visualizationizer : Game
     {
         base.Initialize();
         RecalculateUILayout();
-        LoadDefaultSvg();
+        LoadDefaultMedia();
         svgPosition = new Vector2(GraphicsDevice.Viewport.Width / 2, GraphicsDevice.Viewport.Height / 2);
     }
-    private void OpenSvgFileDialog()
+    private void OpenMediaFileDialog()
     {
         KeyboardState keyboardState = Keyboard.GetState();
         bool shiftPressed = keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.LeftShift) || keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.RightShift);
 
         using (OpenFileDialog openFileDialog = new OpenFileDialog())
         {
-            openFileDialog.Filter = "SVG Files (*.svg)|*.svg";
-            openFileDialog.Title = "Open SVG File";
+            openFileDialog.Filter = "Supported Media (*.svg;*.png;*.jpg;*.jpeg;*.gif)|*.svg;*.png;*.jpg;*.jpeg;*.gif|SVG Files (*.svg)|*.svg|Image Files (*.png;*.jpg;*.jpeg;*.gif)|*.png;*.jpg;*.jpeg;*.gif";
+            openFileDialog.Title = "Open Media File";
             if (openFileDialog.ShowDialog() == DialogResult.OK)
             {
-                svgTexture = LoadSvgTexture(openFileDialog.FileName);
-                loadedMediaPath = openFileDialog.FileName;
+                LoadMediaFromPath(openFileDialog.FileName, true);
 
                 if (shiftPressed)
                 {
-                    System.Windows.Forms.MessageBox.Show("Now writing this SVG file to the SVGs folder as 'startup.svg' for use on startup.", "Setting Default SVG", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    SetAsDefaultSvg(openFileDialog.FileName);
+                    System.Windows.Forms.MessageBox.Show("Now writing this media file to the SVGs folder as startup media for use on startup.", "Setting Default Media", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    SetAsDefaultMedia(openFileDialog.FileName);
                 }
             }
         }
     }
-    private void SetAsDefaultSvg(string filePath)
-{
-        string svgFolderPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SVGs");
-        // Check if the SVGs folder exists, if not, create it
-        if (!Directory.Exists(svgFolderPath))
+    private void SetAsDefaultMedia(string filePath)
+    {
+        if (!MediaLoader.IsSupportedFile(filePath))
         {
-            Directory.CreateDirectory(svgFolderPath);
+            return;
         }
-        string startupPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SVGs", "startup.svg");
-    try
-    {
-        File.Copy(filePath, startupPath, true); // Copies and overwrites the existing startup.svg
-        //Debug.WriteLine("Default startup SVG set successfully.");
-    }
-    catch (Exception ex)
-    {
-        Debug.WriteLine($"Failed to set default SVG: {ex.Message}");
-        System.Windows.Forms.MessageBox.Show($"Failed to set the SVG as default to {AppDomain.CurrentDomain.BaseDirectory}.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-    }
-}
-    private void LoadDefaultSvg()
-    {
-        string startupPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SVGs", "startup.svg");
-        if (File.Exists(startupPath))
+
+        string mediaFolderPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SVGs");
+        if (!Directory.Exists(mediaFolderPath))
         {
-            svgTexture = LoadSvgTexture(startupPath);
-            loadedMediaPath = startupPath;
-            //Debug.WriteLine("Startup SVG loaded successfully.");
+            Directory.CreateDirectory(mediaFolderPath);
         }
-        else
+
+        foreach (string extension in MediaLoader.GetSupportedExtensions())
         {
-            //Debug.WriteLine("Startup SVG not found.");
+            string oldStartupPath = Path.Combine(mediaFolderPath, $"startup{extension}");
+            if (File.Exists(oldStartupPath))
+            {
+                File.Delete(oldStartupPath);
+            }
+        }
+
+        string startupPath = Path.Combine(mediaFolderPath, $"startup{Path.GetExtension(filePath).ToLowerInvariant()}");
+        try
+        {
+            File.Copy(filePath, startupPath, true);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to set default media: {ex.Message}");
+            System.Windows.Forms.MessageBox.Show($"Failed to set default media to {AppDomain.CurrentDomain.BaseDirectory}.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+    private void LoadDefaultMedia()
+    {
+        string mediaFolderPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SVGs");
+        foreach (string extension in MediaLoader.GetSupportedExtensions())
+        {
+            string startupPath = Path.Combine(mediaFolderPath, $"startup{extension}");
+            if (File.Exists(startupPath))
+            {
+                LoadMediaFromPath(startupPath, false);
+                break;
+            }
         }
     }
     private void ApplyInitialSettings()
@@ -198,37 +209,30 @@ public class Visualizationizer : Game
         // Update the visualizer with the new active colors
         visualizer.UpdateActiveColors(colors, colorToggles);
     }
-    private Texture2D LoadSvgTexture(string filePath)
+    private void LoadMediaFromPath(string filePath, bool applyStandardScale)
     {
-        SvgDocument svgDocument = SvgDocument.Open(filePath);
-        int width = (int)svgDocument.Width.Value;
-        int height = (int)svgDocument.Height.Value;
-        // Check for viewBox attribute and adjust dimensions accordingly
-        if (svgDocument.ViewBox != SvgViewBox.Empty)
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath) || !MediaLoader.IsSupportedFile(filePath))
         {
-            width = (int)svgDocument.ViewBox.Width;
-            height = (int)svgDocument.ViewBox.Height;
+            return;
         }
-        // Bitmap upscaling for better visibility of imported file
-        const int resolutionMultiplier = 4;
-        width *= resolutionMultiplier;
-        height *= resolutionMultiplier;
-        // Ensure minimum dimensions to avoid issues
-        width = Math.Max(width, 1);
-        height = Math.Max(height, 1);
-        using (var bitmap = new System.Drawing.Bitmap(width, height))
+
+        try
         {
-            using (var gfx = System.Drawing.Graphics.FromImage(bitmap))
+            Texture2D loadedTexture = MediaLoader.LoadTexture(graphics.GraphicsDevice, filePath);
+            svgTexture?.Dispose();
+            svgTexture = loadedTexture;
+            loadedMediaPath = filePath;
+
+            if (applyStandardScale)
             {
-                gfx.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                gfx.Clear(System.Drawing.Color.Transparent);
-
-                // Scale the graphics object to match the higher resolution
-                gfx.ScaleTransform(resolutionMultiplier, resolutionMultiplier);
-
-                svgDocument.Draw(gfx);
+                svgScaleSliderValue = StandardImportScale;
+                svgPosition = new Vector2(GraphicsDevice.Viewport.Width / 2f, GraphicsDevice.Viewport.Height / 2f);
             }
-            return CreateTextureFromBitmap(graphics.GraphicsDevice, bitmap);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to load media file '{filePath}': {ex.Message}");
+            System.Windows.Forms.MessageBox.Show($"Failed to load media file: {Path.GetFileName(filePath)}", "Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
     private static Texture2D CreateTextureFromBitmap(GraphicsDevice device, System.Drawing.Bitmap bitmap)
@@ -332,12 +336,12 @@ public class Visualizationizer : Game
                     visualizer.UpdateFFTBinCount(newFFTLength / 2);
                 }
             });
-            // Slider 4 - Size of the imported SVG file
+            // Slider 4 - Size of the imported media file
             HandleSlider(mouse, sliderPosition4, sliderTexture, ref svgScaleSliderValue, 0.01f, 1.0f, v =>
             {
                 svgScaleSliderValue = v;
             });
-            // Slider 5 - Perturbation factor for imported SVG file. Zero value stops the shaking, big value shakes a lot
+            // Slider 5 - Perturbation factor for imported media file. Zero value stops the shaking, big value shakes a lot
             HandleSlider(mouse, sliderPosition5, sliderTexture5, ref perturbationSliderValue, 0.0f, 1.0f, v =>
             {
                 perturbationSliderValue = v;
@@ -354,11 +358,11 @@ public class Visualizationizer : Game
                 }
             }
         }
-        //Load SVG when you press the load SVG button - default setting behavior handled in OpenSvgFileDialog
+        //Load media when you press the load button - default setting behavior handled in OpenMediaFileDialog
         if (sidebarVisible && svgButtonRect.Contains(mouse.X, mouse.Y) && mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed && lastButtonPressTime + TimeSpan.FromMilliseconds(250) < gameTime.TotalGameTime)
         {
             lastButtonPressTime = gameTime.TotalGameTime;
-            OpenSvgFileDialog();
+            OpenMediaFileDialog();
         }
         //Get Keyboard Key Presses
         KeyboardState keyboardState = Keyboard.GetState();
@@ -369,18 +373,20 @@ public class Visualizationizer : Game
         {
             Exit();  // This will close the application
         }
-        //Press DEL to drp the imported SVG texture
+        //Press DEL to drop the imported media texture
         if (keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Delete))
         {
+            svgTexture?.Dispose();
             svgTexture = null;
+            loadedMediaPath = string.Empty;
         }
-        //Full Screen Toggle - its a little buggy but not really sure why. probably something to do with the update loop but works well enough if you hit it a few times. Need to add logic for better windowed mode handling
+        //Full Screen Toggle - works with current resize recalculation path.
         if (keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.F11))
         {
             graphics.ToggleFullScreen();
             RecalculateUILayout();
         }
-        //Imported SVG dragging logic
+        //Imported media dragging logic
         if (svgTexture != null)
         {
             //Debug.WriteLine("SVG Texture is ready to be drawn.");
@@ -575,7 +581,7 @@ public class Visualizationizer : Game
         helpLabelTextures.Clear();
 
         AddHelpLabelTexture("close", "Close");
-        AddHelpLabelTexture("load", "Load SVG");
+        AddHelpLabelTexture("load", "Load Media");
         AddHelpLabelTexture("slider1", "Amplitude");
         AddHelpLabelTexture("slider2", "Cutoff");
         AddHelpLabelTexture("slider3", "FFT Bins");
@@ -879,16 +885,19 @@ public class Visualizationizer : Game
         svgPosition = state.GetSvgPosition();
         loadedMediaPath = state.LoadedMediaPath ?? string.Empty;
 
-        if (!string.IsNullOrWhiteSpace(loadedMediaPath) && File.Exists(loadedMediaPath))
+        if (string.IsNullOrWhiteSpace(loadedMediaPath))
         {
-            try
-            {
-                svgTexture = LoadSvgTexture(loadedMediaPath);
-            }
-            catch
-            {
-                svgTexture = null;
-            }
+            svgTexture = null;
+            return;
+        }
+
+        if (File.Exists(loadedMediaPath) && MediaLoader.IsSupportedFile(loadedMediaPath))
+        {
+            LoadMediaFromPath(loadedMediaPath, false);
+        }
+        else
+        {
+            svgTexture = null;
         }
     }
 }

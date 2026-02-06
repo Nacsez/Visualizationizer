@@ -120,3 +120,18 @@ Before starting Section 2 code, run and confirm:
 - Section 1 (`T01-T05`) complete.
 - Section 2 (`T06-T08`) complete and validated.
 - Next active section: Section 3 (`T09-T11`) Media Pipeline Expansion.
+
+## Section 3 Progress (2026-02-06)
+
+- `T09` implemented in code: shared media loader added for `.svg`, `.png`, `.jpg`, `.jpeg`, and `.gif`.
+- `T10` implemented in code: imported media now applies standardized initial scale and centered placement.
+- `T11` implemented in code: profile restore path now reloads persisted media through the shared loader.
+- Default startup media logic now supports supported extensions (`startup.svg/png/jpg/jpeg/gif`).
+- Manual validation pass completed across supported import types and profile reload scenarios.
+
+## Section Completion (2026-02-06)
+
+- Section 1 (`T01-T05`) complete.
+- Section 2 (`T06-T08`) complete and validated.
+- Section 3 (`T09-T11`) complete and validated.
+- Next active section: Section 4 (`T12-T14`) Audio Source Flexibility.
