@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using NAudio.Wave;
+using NAudio.CoreAudioApi;
 using System;
 using System.Linq;
 using NAudio.Dsp;  // Include for FFT
@@ -18,9 +19,16 @@ public class Visualizationizer : Game
     private Microsoft.Xna.Framework.Graphics.SpriteBatch spriteBatch;
     private Rectangle sidebarArea;
     private Rectangle closeButtonRect;    
+    private Rectangle rightSidebarArea;
+    private Rectangle rightCloseButtonRect;
+    private Rectangle rightMicModeButtonRect;
+    private Rectangle rightSystemModeButtonRect;
+    private Rectangle rightPrevDeviceButtonRect;
+    private Rectangle rightNextDeviceButtonRect;
     private AudioVisualizer visualizer;
     private AudioManager audioManager;
     private bool sidebarVisible;
+    private bool rightSidebarVisible;
     private Texture2D sidebarTexture, sliderTexture2, sliderTexture3, sliderTexture4, sliderTexture5;
     private Texture2D closeButtonTexture;
     private int sidebarWidth = 260;
@@ -82,6 +90,7 @@ public class Visualizationizer : Game
         Content.RootDirectory = "SVGs";
         IsMouseVisible = true;
         sidebarVisible = false;
+        rightSidebarVisible = false;
         Window.AllowUserResizing = true;
         graphics.HardwareModeSwitch = false; // Keep the window borderless on full screen toggle
         graphics.PreferredBackBufferWidth = 1800; // initial width
@@ -290,6 +299,8 @@ public class Visualizationizer : Game
     {
         MouseState mouse = Mouse.GetState();
         UpdateMouseVisibility(mouse, gameTime);
+        int viewportWidth = GraphicsDevice.Viewport.Width;
+
         if (!sidebarVisible && mouse.X <= 5)
         {
             sidebarVisible = true;
@@ -297,6 +308,20 @@ public class Visualizationizer : Game
         else if (sidebarVisible && closeButtonRect.Contains(mouse.X, mouse.Y) && mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
         {
             sidebarVisible = false;
+        }
+
+        if (!rightSidebarVisible && mouse.X >= viewportWidth - 5)
+        {
+            rightSidebarVisible = true;
+        }
+        else if (rightSidebarVisible && rightCloseButtonRect.Contains(mouse.X, mouse.Y) && mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
+        {
+            rightSidebarVisible = false;
+        }
+
+        if (rightSidebarVisible)
+        {
+            HandleRightPanelInteraction(mouse, gameTime);
         }
         for (int i = 0; i < colorButtons.Length; i++)
         {
@@ -505,10 +530,23 @@ public class Visualizationizer : Game
                 Color drawColor = colorToggles[i] ? colors[i] : Color.Black; // Use black when toggled off
                 spriteBatch.Draw(colorButtonTexture, colorButtons[i], drawColor);
             }
-            if (showHelpOverlay)
-            {
-                DrawHelpOverlay();
-            }
+        }
+        if (rightSidebarVisible)
+        {
+            spriteBatch.Draw(sidebarTexture, rightSidebarArea, Color.White);
+            spriteBatch.Draw(closeButtonTexture, rightCloseButtonRect, Color.White);
+            Color micModeColor = audioManager.CaptureSource == AudioCaptureSource.Microphone ? new Color(205, 255, 205) : Color.White;
+            Color systemModeColor = audioManager.CaptureSource == AudioCaptureSource.SystemLoopback ? new Color(205, 255, 205) : Color.White;
+            spriteBatch.Draw(closeButtonTexture, rightMicModeButtonRect, micModeColor);
+            spriteBatch.Draw(closeButtonTexture, rightSystemModeButtonRect, systemModeColor);
+
+            Color deviceButtonColor = audioManager.CaptureSource == AudioCaptureSource.Microphone ? Color.White : new Color(170, 170, 170);
+            spriteBatch.Draw(closeButtonTexture, rightPrevDeviceButtonRect, deviceButtonColor);
+            spriteBatch.Draw(closeButtonTexture, rightNextDeviceButtonRect, deviceButtonColor);
+        }
+        if (showHelpOverlay)
+        {
+            DrawHelpOverlay();
         }
         // End the sprite batch operations
         spriteBatch.End();
@@ -539,6 +577,50 @@ public class Visualizationizer : Game
             sliderVal = (mouse.X - sliderPos.X) / (float)sliderTex.Width;
             sliderVal = MathHelper.Clamp(sliderVal, minVal, maxVal);
             updateAction(sliderVal);
+        }
+    }
+
+    private void HandleRightPanelInteraction(MouseState mouse, GameTime gameTime)
+    {
+        if (mouse.LeftButton != Microsoft.Xna.Framework.Input.ButtonState.Pressed)
+        {
+            return;
+        }
+
+        if (lastButtonPressTime + TimeSpan.FromMilliseconds(250) > gameTime.TotalGameTime)
+        {
+            return;
+        }
+
+        if (rightMicModeButtonRect.Contains(mouse.Position))
+        {
+            audioManager.SetCaptureSource(AudioCaptureSource.Microphone);
+            lastButtonPressTime = gameTime.TotalGameTime;
+            return;
+        }
+
+        if (rightSystemModeButtonRect.Contains(mouse.Position))
+        {
+            audioManager.SetCaptureSource(AudioCaptureSource.SystemLoopback);
+            lastButtonPressTime = gameTime.TotalGameTime;
+            return;
+        }
+
+        if (audioManager.CaptureSource == AudioCaptureSource.Microphone)
+        {
+            if (rightPrevDeviceButtonRect.Contains(mouse.Position))
+            {
+                audioManager.SelectPreviousInputDevice();
+                lastButtonPressTime = gameTime.TotalGameTime;
+                return;
+            }
+
+            if (rightNextDeviceButtonRect.Contains(mouse.Position))
+            {
+                audioManager.SelectNextInputDevice();
+                lastButtonPressTime = gameTime.TotalGameTime;
+                return;
+            }
         }
     }
 
@@ -588,6 +670,10 @@ public class Visualizationizer : Game
         AddHelpLabelTexture("slider4", "Image Size");
         AddHelpLabelTexture("slider5", "Image React");
         AddHelpLabelTexture("colors", "Colors");
+        AddHelpLabelTexture("right_mic", "Mic In");
+        AddHelpLabelTexture("right_system", "System");
+        AddHelpLabelTexture("right_prev", "Prev Input");
+        AddHelpLabelTexture("right_next", "Next Input");
         for (int i = 0; i < modeLabels.Length; i++)
         {
             AddHelpLabelTexture($"mode{i}", modeLabels[i]);
@@ -624,18 +710,31 @@ public class Visualizationizer : Game
 
     private void DrawHelpOverlay()
     {
-        spriteBatch.Draw(closeButtonTexture, sidebarArea, new Color(0, 0, 0, 120));
-        DrawHelpLabel("close", closeButtonRect);
-        DrawHelpLabel("load", svgButtonRect);
-        DrawHelpLabel("slider1", new Rectangle(sliderPosition.ToPoint(), new Point(sliderTexture.Width, sliderTexture.Height)));
-        DrawHelpLabel("slider2", new Rectangle(sliderPosition2.ToPoint(), new Point(sliderTexture2.Width, sliderTexture2.Height)));
-        DrawHelpLabel("slider3", new Rectangle(sliderPosition3.ToPoint(), new Point(sliderTexture3.Width, sliderTexture3.Height)));
-        DrawHelpLabel("slider4", new Rectangle(sliderPosition4.ToPoint(), new Point(sliderTexture.Width, sliderTexture.Height)));
-        DrawHelpLabel("slider5", new Rectangle(sliderPosition5.ToPoint(), new Point(sliderTexture5.Width, sliderTexture5.Height)));
-        DrawHelpLabel("colors", GetBoundingRect(colorButtons));
-        for (int i = 0; i < modeButtons.Length; i++)
+        if (sidebarVisible)
         {
-            DrawHelpLabel($"mode{i}", modeButtons[i]);
+            spriteBatch.Draw(closeButtonTexture, sidebarArea, new Color(0, 0, 0, 120));
+            DrawHelpLabel("close", closeButtonRect);
+            DrawHelpLabel("load", svgButtonRect);
+            DrawHelpLabel("slider1", new Rectangle(sliderPosition.ToPoint(), new Point(sliderTexture.Width, sliderTexture.Height)));
+            DrawHelpLabel("slider2", new Rectangle(sliderPosition2.ToPoint(), new Point(sliderTexture2.Width, sliderTexture2.Height)));
+            DrawHelpLabel("slider3", new Rectangle(sliderPosition3.ToPoint(), new Point(sliderTexture3.Width, sliderTexture3.Height)));
+            DrawHelpLabel("slider4", new Rectangle(sliderPosition4.ToPoint(), new Point(sliderTexture.Width, sliderTexture.Height)));
+            DrawHelpLabel("slider5", new Rectangle(sliderPosition5.ToPoint(), new Point(sliderTexture5.Width, sliderTexture5.Height)));
+            DrawHelpLabel("colors", GetBoundingRect(colorButtons));
+            for (int i = 0; i < modeButtons.Length; i++)
+            {
+                DrawHelpLabel($"mode{i}", modeButtons[i]);
+            }
+        }
+
+        if (rightSidebarVisible)
+        {
+            spriteBatch.Draw(closeButtonTexture, rightSidebarArea, new Color(0, 0, 0, 120));
+            DrawHelpLabel("close", rightCloseButtonRect);
+            DrawHelpLabel("right_mic", rightMicModeButtonRect);
+            DrawHelpLabel("right_system", rightSystemModeButtonRect);
+            DrawHelpLabel("right_prev", rightPrevDeviceButtonRect);
+            DrawHelpLabel("right_next", rightNextDeviceButtonRect);
         }
     }
 
@@ -663,18 +762,33 @@ public class Visualizationizer : Game
 
     private void RecalculateUILayout()
     {
+        int viewportWidth = GraphicsDevice.Viewport.Width;
         int viewportHeight = GraphicsDevice.Viewport.Height;
         float uiScale = MathHelper.Clamp(viewportHeight / 1200f, 0.60f, 1.35f);
 
         sidebarWidth = Math.Max(200, (int)(260 * uiScale));
         sidebarArea = new Rectangle(0, 0, sidebarWidth, viewportHeight);
+        rightSidebarArea = new Rectangle(Math.Max(0, viewportWidth - sidebarWidth), 0, sidebarWidth, viewportHeight);
 
         int sidePadding = Math.Max(12, (int)(20 * uiScale));
         int topButtonGap = Math.Max(8, (int)(15 * uiScale));
         int topButtonHeight = Math.Max(22, (int)(35 * uiScale));
         int topButtonWidth = Math.Max(60, (sidebarWidth - (sidePadding * 2) - topButtonGap) / 2);
         closeButtonRect = new Rectangle(sidePadding, sidePadding, topButtonWidth, topButtonHeight);
+        rightCloseButtonRect = new Rectangle(rightSidebarArea.X + sidePadding, sidePadding, topButtonWidth, topButtonHeight);
         svgButtonRect = new Rectangle(closeButtonRect.Right + topButtonGap, sidePadding, topButtonWidth, topButtonHeight);
+
+        int rightContentX = rightSidebarArea.X + sidePadding;
+        int rightContentWidth = Math.Max(120, sidebarWidth - (sidePadding * 2));
+        int rightRowGap = Math.Max(10, (int)(18 * uiScale));
+        int rightStartY = rightCloseButtonRect.Bottom + Math.Max(14, (int)(24 * uiScale));
+        int rightHalfWidth = Math.Max(50, (rightContentWidth - topButtonGap) / 2);
+        rightMicModeButtonRect = new Rectangle(rightContentX, rightStartY, rightHalfWidth, topButtonHeight);
+        rightSystemModeButtonRect = new Rectangle(rightMicModeButtonRect.Right + topButtonGap, rightStartY, rightHalfWidth, topButtonHeight);
+
+        int rightDeviceRowY = rightStartY + topButtonHeight + rightRowGap;
+        rightPrevDeviceButtonRect = new Rectangle(rightContentX, rightDeviceRowY, rightHalfWidth, topButtonHeight);
+        rightNextDeviceButtonRect = new Rectangle(rightPrevDeviceButtonRect.Right + topButtonGap, rightDeviceRowY, rightHalfWidth, topButtonHeight);
 
         int sliderX = sidePadding;
         int sliderWidth = Math.Max(120, sidebarWidth - (sidePadding * 2));
@@ -852,6 +966,8 @@ public class Visualizationizer : Game
         appState.LoadedMediaPath = loadedMediaPath;
         appState.SetSvgPosition(svgPosition);
         appState.FftLength = audioManager.FftLength;
+        appState.AudioDeviceNumber = audioManager.SelectedInputDevice;
+        appState.AudioCaptureSource = audioManager.CaptureSource.ToString();
     }
 
     private void ApplyAppState(AppState state)
@@ -878,6 +994,13 @@ public class Visualizationizer : Game
             visualizer.UpdateFFTBinCount(state.FftLength / 2);
         }
 
+        AudioCaptureSource requestedSource = AudioCaptureSource.Microphone;
+        if (!string.IsNullOrWhiteSpace(state.AudioCaptureSource) && Enum.TryParse(state.AudioCaptureSource, out AudioCaptureSource parsedSource))
+        {
+            requestedSource = parsedSource;
+        }
+        audioManager.ApplySourceAndDevice(requestedSource, state.AudioDeviceNumber);
+
         visualizer.UpdateFrequencyCutoff(sliderValue2);
         float scaledValue = 1.0f + (100f - 1.0f) * sliderValue;
         visualizer.UpdateScaleFactor(scaledValue);
@@ -901,93 +1024,271 @@ public class Visualizationizer : Game
         }
     }
 }
+public enum AudioCaptureSource
+{
+    Microphone,
+    SystemLoopback
+}
+
 public class AudioManager
 {
-    private WaveInEvent waveIn;
+    private IWaveIn activeCapture;
+    private WaveFormat activeWaveFormat;
+    private readonly object captureLock = new object();
     private Complex[] fftBuffer;
     public float[] FrequencyData { get; private set; }
     private int fftLength = 512;  // Must be a power of 2
     private int m;  // Log base 2 of fftLength
     public int FftLength => fftLength;
+    public AudioCaptureSource CaptureSource { get; private set; } = AudioCaptureSource.Microphone;
+    public int SelectedInputDevice { get; private set; } = 0;
+    public int InputDeviceCount => WaveIn.DeviceCount;
+
     public AudioManager()
     {
         m = (int)Math.Log(fftLength, 2.0);
         fftBuffer = new Complex[fftLength];
-        FrequencyData = new float[fftLength / 2]; // Initialize FrequencyData to avoid null references
+        FrequencyData = new float[fftLength / 2];
     }
+
     public void Initialize(int fftLength = 64)
     {
         this.fftLength = fftLength;
         m = (int)Math.Log(fftLength, 2.0);
         fftBuffer = new Complex[fftLength];
-        FrequencyData = new float[fftLength / 2]; // Reinitialize FrequencyData with the correct size
-        try
-        {
-            int deviceNumber = SelectAudioInputDevice();
-            waveIn = new WaveInEvent
-            {
-                DeviceNumber = deviceNumber,
-                WaveFormat = new WaveFormat(22050, 1)  // Mono channel, Custom cutoff half of "CD Quality" to crop out non-musical frequencies that dont do a lot for the visual feedback. 
-            };
-            waveIn.DataAvailable += OnDataAvailable;
-            waveIn.RecordingStopped += (sender, args) => Debug.WriteLine("Recording stopped.");
-            waveIn.StartRecording();
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error initializing audio device: {ex.Message}");
-        }
+        FrequencyData = new float[fftLength / 2];
+        RestartCapture();
     }
-    private int SelectAudioInputDevice()
+
+    public void ApplySourceAndDevice(AudioCaptureSource source, int deviceNumber)
     {
-        int selectedDevice = 0;  // Default to first device
-        // Need to build out more complex audio input selection. Current logic will use default input audio device in Windows
-        return selectedDevice;
+        CaptureSource = source;
+        if (InputDeviceCount <= 0)
+        {
+            SelectedInputDevice = 0;
+        }
+        else
+        {
+            SelectedInputDevice = Math.Clamp(deviceNumber, 0, InputDeviceCount - 1);
+        }
+        RestartCapture();
     }
+
+    public void SetCaptureSource(AudioCaptureSource source)
+    {
+        if (CaptureSource == source)
+        {
+            return;
+        }
+        CaptureSource = source;
+        RestartCapture();
+    }
+
+    public void SelectNextInputDevice()
+    {
+        if (InputDeviceCount <= 0)
+        {
+            return;
+        }
+        SelectedInputDevice = (SelectedInputDevice + 1) % InputDeviceCount;
+        if (CaptureSource == AudioCaptureSource.Microphone)
+        {
+            RestartCapture();
+        }
+    }
+
+    public void SelectPreviousInputDevice()
+    {
+        if (InputDeviceCount <= 0)
+        {
+            return;
+        }
+        SelectedInputDevice--;
+        if (SelectedInputDevice < 0)
+        {
+            SelectedInputDevice = InputDeviceCount - 1;
+        }
+        if (CaptureSource == AudioCaptureSource.Microphone)
+        {
+            RestartCapture();
+        }
+    }
+
+    public string GetSelectedInputDeviceName()
+    {
+        if (InputDeviceCount <= 0 || SelectedInputDevice < 0 || SelectedInputDevice >= InputDeviceCount)
+        {
+            return "No Input";
+        }
+        return WaveIn.GetCapabilities(SelectedInputDevice).ProductName;
+    }
+
     public void UpdateFFTLength(int newLength)
     {
-        if (newLength != fftLength)
+        lock (captureLock)
         {
+            if (newLength == fftLength)
+            {
+                return;
+            }
+
             fftLength = newLength;
             m = (int)Math.Log(fftLength, 2.0);
             fftBuffer = new Complex[fftLength];
-            FrequencyData = new float[fftLength / 2]; // Reinitialize FrequencyData with the correct size
+            FrequencyData = new float[fftLength / 2];
         }
     }
+
+    private void RestartCapture()
+    {
+        lock (captureLock)
+        {
+            StopCapture_NoLock();
+
+            try
+            {
+                if (CaptureSource == AudioCaptureSource.SystemLoopback)
+                {
+                    var loopback = new WasapiLoopbackCapture();
+                    loopback.DataAvailable += OnDataAvailable;
+                    loopback.RecordingStopped += (sender, args) => Debug.WriteLine("Loopback capture stopped.");
+                    activeWaveFormat = loopback.WaveFormat;
+                    activeCapture = loopback;
+                }
+                else
+                {
+                    if (InputDeviceCount <= 0)
+                    {
+                        return;
+                    }
+
+                    SelectedInputDevice = Math.Clamp(SelectedInputDevice, 0, InputDeviceCount - 1);
+                    var waveIn = new WaveInEvent
+                    {
+                        DeviceNumber = SelectedInputDevice,
+                        WaveFormat = new WaveFormat(22050, 1)
+                    };
+                    waveIn.DataAvailable += OnDataAvailable;
+                    waveIn.RecordingStopped += (sender, args) => Debug.WriteLine("Recording stopped.");
+                    activeWaveFormat = waveIn.WaveFormat;
+                    activeCapture = waveIn;
+                }
+
+                activeCapture.StartRecording();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error initializing audio capture: {ex.Message}");
+                StopCapture_NoLock();
+            }
+        }
+    }
+
     private void OnDataAvailable(object sender, WaveInEventArgs args)
     {
-        //When there is stuff to do, do it
-        int bufferFilled = ConvertBytesToFloats(args.Buffer, args.BytesRecorded, fftBuffer, fftLength);
-        FastFourierTransform.FFT(true, m, fftBuffer);
-        ProcessFFTResults();
-    }
-    private int ConvertBytesToFloats(byte[] buffer, int bytesRecorded, Complex[] fftBuffer, int fftLength)
-    {
-        int index = 0;
-        for (int i = 0; i < bytesRecorded && i / 2 < fftLength; i += 2)
+        lock (captureLock)
         {
-            short sample = (short)((buffer[i + 1] << 8) | buffer[i]);
-            fftBuffer[i / 2].X = sample / 32768f; // Convert to floating point
-            fftBuffer[i / 2].Y = 0; // Imaginary part is zero. We obey only real numbers here
-            index = i / 2;
+            if (activeWaveFormat == null || fftBuffer == null || fftBuffer.Length == 0)
+            {
+                return;
+            }
+
+            ConvertBytesToFloats(args.Buffer, args.BytesRecorded, fftBuffer, fftLength, activeWaveFormat);
+            FastFourierTransform.FFT(true, m, fftBuffer);
+            ProcessFFTResults();
         }
-        return index + 1; // Return count of points filled
     }
+
+    private static void ConvertBytesToFloats(byte[] buffer, int bytesRecorded, Complex[] fftBuffer, int fftLength, WaveFormat waveFormat)
+    {
+        Array.Clear(fftBuffer, 0, fftBuffer.Length);
+
+        int channels = Math.Max(1, waveFormat.Channels);
+        int bitsPerSample = waveFormat.BitsPerSample;
+        int bytesPerSample = Math.Max(1, bitsPerSample / 8);
+        int bytesPerFrame = Math.Max(bytesPerSample * channels, waveFormat.BlockAlign);
+        int framesRecorded = bytesRecorded / bytesPerFrame;
+        int framesToProcess = Math.Min(framesRecorded, fftLength);
+
+        for (int frame = 0; frame < framesToProcess; frame++)
+        {
+            int frameOffset = frame * bytesPerFrame;
+            float sampleSum = 0f;
+            for (int channel = 0; channel < channels; channel++)
+            {
+                int sampleOffset = frameOffset + (channel * bytesPerSample);
+                sampleSum += ReadSample(buffer, sampleOffset, waveFormat);
+            }
+            fftBuffer[frame].X = sampleSum / channels;
+            fftBuffer[frame].Y = 0;
+        }
+    }
+
+    private static float ReadSample(byte[] buffer, int offset, WaveFormat waveFormat)
+    {
+        if (waveFormat.Encoding == WaveFormatEncoding.IeeeFloat && waveFormat.BitsPerSample == 32)
+        {
+            return BitConverter.ToSingle(buffer, offset);
+        }
+
+        if (waveFormat.Encoding == WaveFormatEncoding.Pcm)
+        {
+            return waveFormat.BitsPerSample switch
+            {
+                8 => (buffer[offset] - 128) / 128f,
+                16 => BitConverter.ToInt16(buffer, offset) / 32768f,
+                24 => ReadPcm24(buffer, offset),
+                32 => BitConverter.ToInt32(buffer, offset) / 2147483648f,
+                _ => 0f
+            };
+        }
+
+        return 0f;
+    }
+
+    private static float ReadPcm24(byte[] buffer, int offset)
+    {
+        int sample = buffer[offset] | (buffer[offset + 1] << 8) | (buffer[offset + 2] << 16);
+        if ((sample & 0x00800000) != 0)
+        {
+            sample |= unchecked((int)0xFF000000);
+        }
+        return sample / 8388608f;
+    }
+
     private void ProcessFFTResults()
     {
-        //make the numbers so we can build the colored shapes
         FrequencyData = new float[fftLength / 2];
         for (int i = 0; i < FrequencyData.Length; i++)
         {
             FrequencyData[i] = (float)Math.Sqrt(fftBuffer[i].X * fftBuffer[i].X + fftBuffer[i].Y * fftBuffer[i].Y);
         }
     }
+
     public void Stop()
     {
-        //very important or else program no worky right
-        waveIn?.StopRecording();
-        waveIn?.Dispose();
-        waveIn = null;
+        lock (captureLock)
+        {
+            StopCapture_NoLock();
+        }
+    }
+
+    private void StopCapture_NoLock()
+    {
+        if (activeCapture != null)
+        {
+            try
+            {
+                activeCapture.StopRecording();
+            }
+            catch
+            {
+                // ignored
+            }
+            activeCapture.Dispose();
+            activeCapture = null;
+        }
+        activeWaveFormat = null;
     }
 }
 public class AudioVisualizer

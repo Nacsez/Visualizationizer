@@ -135,3 +135,19 @@ Before starting Section 2 code, run and confirm:
 - Section 2 (`T06-T08`) complete and validated.
 - Section 3 (`T09-T11`) complete and validated.
 - Next active section: Section 4 (`T12-T14`) Audio Source Flexibility.
+
+## Section 4 Progress (2026-02-06)
+
+- Added right-panel audio control scaffold using the same button style as the left menu.
+- Implemented audio source switching between microphone input and system loopback (`T13`).
+- Implemented microphone device cycling controls (previous/next input) with live capture restart (`T12`).
+- Added profile persistence for selected audio source and selected microphone device (`T14`).
+- Manual validation completed for source switching, input cycling, and profile restore behavior.
+
+## Section Completion (2026-02-06)
+
+- Section 1 (`T01-T05`) complete.
+- Section 2 (`T06-T08`) complete and validated.
+- Section 3 (`T09-T11`) complete and validated.
+- Section 4 (`T12-T14`) complete and validated.
+- Next active section: Section 5 (`T15-T17`) Controller + Final Stabilization.
