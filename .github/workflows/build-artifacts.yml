@@ -1,0 +1,76 @@
+name: Build Artifacts
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  publish-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Publish Windows x64 single-file build
+        shell: pwsh
+        run: |
+          dotnet publish Visualizationizer1.0.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            /p:PublishSingleFile=true `
+            -o artifacts/win-x64/publish
+
+      - name: Upload Windows publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Visualizationizer1.1-win-x64
+          path: artifacts/win-x64/publish/**
+          if-no-files-found: error
+
+  probe-linux-native:
+    runs-on: ubuntu-latest
+    needs: publish-windows
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Probe Linux native publish compatibility
+        shell: bash
+        run: |
+          set +e
+          dotnet publish Visualizationizer1.0.csproj \
+            -c Release \
+            -r linux-x64 \
+            --self-contained true \
+            /p:PublishSingleFile=true \
+            -o artifacts/linux-x64/publish > linux-publish-probe.log 2>&1
+          exit_code=$?
+          echo "Linux publish exit code: ${exit_code}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${exit_code}" -eq 0 ]; then
+            echo "Linux native publish currently succeeds." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Linux native publish currently fails for this project (expected with current Windows-targeted stack)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
+
+      - name: Upload Linux probe log
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-native-publish-probe-log
+          path: linux-publish-probe.log
+          if-no-files-found: error

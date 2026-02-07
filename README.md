@@ -136,11 +136,27 @@ Build:
 dotnet build Visualizationizer1.0.sln
 ```
 
+Build release artifacts (Windows + optional Linux probe):
+
+```powershell
+.\scripts\build-artifacts.ps1 -ProbeLinux
+```
+
 Run:
 
 ```powershell
 dotnet run --project Visualizationizer1.0.csproj
 ```
+
+CI workflow:
+
+- `.github/workflows/build-artifacts.yml` publishes a Windows x64 artifact.
+- It also runs a Linux native publish probe and uploads the probe log.
+
+Linux note:
+
+- Current codebase is Windows-targeted (`net6.0-windows`, Windows Forms, NAudio/CoreAudio).
+- Native Linux publish currently fails with runtime-pack mismatch (`NETSDK1082`) and requires refactor before Linux shipping builds are possible.
 
 ## Contributing
 
@@ -150,4 +166,3 @@ If you propose a change, include a short behavior/regression test pass summary w
 ## License
 
 Distributed under the MIT License. See `LICENSE`.
-
