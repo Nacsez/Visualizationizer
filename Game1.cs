@@ -41,7 +41,10 @@ public class Visualizationizer : Game
         RightSystemMode,
         RightPrevInput,
         RightNextInput,
-        RightInputDevice
+        RightInputDevice,
+        RightQuickSlot,
+        RightSaveSlotProfilePackage,
+        RightLoadSlotProfilePackage
     }
 
     private struct FocusTarget
@@ -61,7 +64,10 @@ public class Visualizationizer : Game
     private Rectangle rightSystemModeButtonRect;
     private Rectangle rightPrevDeviceButtonRect;
     private Rectangle rightNextDeviceButtonRect;
+    private Rectangle rightSaveSlotProfilePackageButtonRect;
+    private Rectangle rightLoadSlotProfilePackageButtonRect;
     private Rectangle[] rightInputDeviceButtons = Array.Empty<Rectangle>();
+    private Rectangle[] rightQuickSlotButtons = Array.Empty<Rectangle>();
     private AudioVisualizer visualizer;
     private AudioManager audioManager;
     private bool sidebarVisible;
@@ -111,11 +117,15 @@ public class Visualizationizer : Game
     private AppState appState = new AppState();
     private ProfileManager profileManager = new ProfileManager();
     private Point lastMousePosition;
+    private MouseState previousMouseState;
+    private bool suppressRightPanelActionsUntilMouseRelease = false;
+    private bool isProfileDialogOpen = false;
     private int lastMouseWheelValue;
     private bool hasMouseSample = false;
     private TimeSpan lastMouseActivityTime = TimeSpan.Zero;
     private static readonly TimeSpan MouseHideDelay = TimeSpan.FromSeconds(2);
     private bool showHelpOverlay = false;
+    private const int QuickSlotCount = 10;
     private Dictionary<string, Texture2D> helpLabelTextures = new Dictionary<string, Texture2D>();
     private Texture2D focusHighlightTexture;
     private const float StandardImportScale = 0.35f;
@@ -126,6 +136,7 @@ public class Visualizationizer : Game
     private int focusedControllerTargetIndex = -1;
     private bool controllerFocusVisible = false;
     private bool controllerHelpOverlayHeld = false;
+    private readonly bool[] quickSlotHasProfile = new bool[QuickSlotCount];
     private readonly Dictionary<int, Texture2D> inputDeviceIndexTextures = new Dictionary<int, Texture2D>();
     public Visualizationizer()
     {
@@ -323,6 +334,7 @@ public class Visualizationizer : Game
         ApplyInitialSettings();
         SyncAppStateFromRuntime();
         RecalculateUILayout();
+        RefreshQuickSlotProfileFlags();
         focusHighlightTexture?.Dispose();
         focusHighlightTexture = CreateColorTexture(1, 1, Color.White);
     }
@@ -513,6 +525,7 @@ public class Visualizationizer : Game
             //Debug.WriteLine("SVG Texture not ready yet.");
         }
         SyncAppStateFromRuntime();
+        previousMouseState = mouse;
         previousKeyboardState = keyboardState;
         base.Update(gameTime);
     }
@@ -599,6 +612,17 @@ public class Visualizationizer : Game
             spriteBatch.Draw(closeButtonTexture, rightPrevDeviceButtonRect, deviceButtonColor);
             spriteBatch.Draw(closeButtonTexture, rightNextDeviceButtonRect, deviceButtonColor);
 
+            for (int i = 0; i < rightQuickSlotButtons.Length; i++)
+            {
+                Rectangle slotRect = rightQuickSlotButtons[i];
+                bool hasProfile = i < quickSlotHasProfile.Length && quickSlotHasProfile[i];
+                Color slotColor = hasProfile ? new Color(85, 165, 120) : new Color(8, 8, 8);
+                spriteBatch.Draw(closeButtonTexture, slotRect, slotColor);
+            }
+
+            spriteBatch.Draw(closeButtonTexture, rightSaveSlotProfilePackageButtonRect, Color.White);
+            spriteBatch.Draw(closeButtonTexture, rightLoadSlotProfilePackageButtonRect, Color.White);
+
             if (audioManager.CaptureSource == AudioCaptureSource.Microphone && rightInputDeviceButtons.Length > 0)
             {
                 for (int i = 0; i < rightInputDeviceButtons.Length; i++)
@@ -656,13 +680,63 @@ public class Visualizationizer : Game
 
     private void HandleRightPanelInteraction(MouseState mouse, GameTime gameTime)
     {
-        if (mouse.LeftButton != Microsoft.Xna.Framework.Input.ButtonState.Pressed)
+        if (isProfileDialogOpen)
+        {
+            return;
+        }
+
+        if (suppressRightPanelActionsUntilMouseRelease)
+        {
+            if (mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Released)
+            {
+                suppressRightPanelActionsUntilMouseRelease = false;
+            }
+            return;
+        }
+
+        if (!IsNewLeftMousePress(mouse))
         {
             return;
         }
 
         if (lastButtonPressTime + TimeSpan.FromMilliseconds(250) > gameTime.TotalGameTime)
         {
+            return;
+        }
+
+        bool controlDown = IsControlModifierDown();
+        for (int i = 0; i < rightQuickSlotButtons.Length; i++)
+        {
+            if (!rightQuickSlotButtons[i].Contains(mouse.Position))
+            {
+                continue;
+            }
+
+            int slot = i + 1;
+            if (controlDown)
+            {
+                SaveProfileToSlot(slot);
+            }
+            else
+            {
+                LoadProfileFromSlot(slot);
+            }
+
+            lastButtonPressTime = gameTime.TotalGameTime;
+            return;
+        }
+
+        if (rightSaveSlotProfilePackageButtonRect.Contains(mouse.Position))
+        {
+            SaveSlotProfilePackageWithPrompt();
+            lastButtonPressTime = gameTime.TotalGameTime;
+            return;
+        }
+
+        if (rightLoadSlotProfilePackageButtonRect.Contains(mouse.Position))
+        {
+            LoadSlotProfilePackageWithPrompt();
+            lastButtonPressTime = gameTime.TotalGameTime;
             return;
         }
 
@@ -706,6 +780,12 @@ public class Visualizationizer : Game
                 return;
             }
         }
+    }
+
+    private bool IsNewLeftMousePress(MouseState mouse)
+    {
+        return mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed
+            && previousMouseState.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Released;
     }
 
     private void UpdateKeyboardInputMode(KeyboardState keyboardState)
@@ -884,6 +964,12 @@ public class Visualizationizer : Game
             AddFocusTarget(FocusTargetType.RightSystemMode, 0, rightSystemModeButtonRect);
             AddFocusTarget(FocusTargetType.RightPrevInput, 0, rightPrevDeviceButtonRect);
             AddFocusTarget(FocusTargetType.RightNextInput, 0, rightNextDeviceButtonRect);
+            for (int i = 0; i < rightQuickSlotButtons.Length; i++)
+            {
+                AddFocusTarget(FocusTargetType.RightQuickSlot, i, rightQuickSlotButtons[i]);
+            }
+            AddFocusTarget(FocusTargetType.RightSaveSlotProfilePackage, 0, rightSaveSlotProfilePackageButtonRect);
+            AddFocusTarget(FocusTargetType.RightLoadSlotProfilePackage, 0, rightLoadSlotProfilePackageButtonRect);
             for (int i = 0; i < rightInputDeviceButtons.Length; i++)
             {
                 AddFocusTarget(FocusTargetType.RightInputDevice, i, rightInputDeviceButtons[i]);
@@ -1057,6 +1143,15 @@ public class Visualizationizer : Game
                     audioManager.SelectInputDevice(target.Index);
                 }
                 break;
+            case FocusTargetType.RightQuickSlot:
+                LoadProfileFromSlot(target.Index + 1);
+                break;
+            case FocusTargetType.RightSaveSlotProfilePackage:
+                SaveSlotProfilePackageWithPrompt();
+                break;
+            case FocusTargetType.RightLoadSlotProfilePackage:
+                LoadSlotProfilePackageWithPrompt();
+                break;
             case FocusTargetType.Slider:
                 break;
         }
@@ -1163,7 +1258,15 @@ public class Visualizationizer : Game
         AddHelpLabelTexture("right_system", "System");
         AddHelpLabelTexture("right_prev", "Prev Input");
         AddHelpLabelTexture("right_next", "Next Input");
+        AddHelpLabelTexture("right_save_slots", "Save Slot Set");
+        AddHelpLabelTexture("right_load_slots", "Load Slot Set");
         AddHelpLabelTexture("right_inputs", "Inputs");
+        for (int i = 0; i < QuickSlotCount; i++)
+        {
+            int slotNumber = i + 1;
+            string label = slotNumber == 10 ? "0" : slotNumber.ToString();
+            AddHelpLabelTexture($"right_slot_{slotNumber}", label);
+        }
         for (int i = 0; i < modeLabels.Length; i++)
         {
             AddHelpLabelTexture($"mode{i}", modeLabels[i]);
@@ -1176,7 +1279,7 @@ public class Visualizationizer : Game
         helpLabelTextures[key] = CreateTextTexture(text, width, 24);
     }
 
-    private Texture2D CreateTextTexture(string text, int width, int height)
+    private Texture2D CreateTextTexture(string text, int width, int height, System.Drawing.Color? textColor = null)
     {
         using (var bitmap = new System.Drawing.Bitmap(width, height))
         {
@@ -1186,7 +1289,7 @@ public class Visualizationizer : Game
                 gfx.Clear(System.Drawing.Color.Transparent);
                 gfx.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 using (var font = new System.Drawing.Font("Segoe UI", 12, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Pixel))
-                using (var brush = new System.Drawing.SolidBrush(System.Drawing.Color.White))
+                using (var brush = new System.Drawing.SolidBrush(textColor ?? System.Drawing.Color.White))
                 using (var format = new System.Drawing.StringFormat())
                 {
                     format.Alignment = System.Drawing.StringAlignment.Center;
@@ -1228,6 +1331,127 @@ public class Visualizationizer : Game
             texture?.Dispose();
         }
         inputDeviceIndexTextures.Clear();
+    }
+
+    private void RefreshQuickSlotProfileFlags()
+    {
+        for (int i = 0; i < quickSlotHasProfile.Length; i++)
+        {
+            quickSlotHasProfile[i] = profileManager.HasSlot(i + 1);
+        }
+    }
+
+    private string PromptForSlotProfilePackageName()
+    {
+        using (Form dialog = new Form())
+        using (Label label = new Label())
+        using (TextBox nameTextBox = new TextBox())
+        using (Button saveButton = new Button())
+        using (Button cancelButton = new Button())
+        {
+            dialog.Text = "Save Slot Set";
+            dialog.FormBorderStyle = FormBorderStyle.FixedDialog;
+            dialog.ClientSize = new System.Drawing.Size(360, 138);
+            dialog.StartPosition = FormStartPosition.CenterScreen;
+            dialog.MaximizeBox = false;
+            dialog.MinimizeBox = false;
+            dialog.ShowInTaskbar = false;
+
+            label.Left = 12;
+            label.Top = 14;
+            label.Width = 332;
+            label.Text = "Profile name:";
+
+            nameTextBox.Left = 12;
+            nameTextBox.Top = 38;
+            nameTextBox.Width = 332;
+
+            saveButton.Text = "Save";
+            saveButton.Left = 184;
+            saveButton.Top = 86;
+            saveButton.Width = 75;
+            saveButton.DialogResult = DialogResult.OK;
+
+            cancelButton.Text = "Cancel";
+            cancelButton.Left = 269;
+            cancelButton.Top = 86;
+            cancelButton.Width = 75;
+            cancelButton.DialogResult = DialogResult.Cancel;
+
+            dialog.Controls.Add(label);
+            dialog.Controls.Add(nameTextBox);
+            dialog.Controls.Add(saveButton);
+            dialog.Controls.Add(cancelButton);
+            dialog.AcceptButton = saveButton;
+            dialog.CancelButton = cancelButton;
+
+            if (dialog.ShowDialog() == DialogResult.OK)
+            {
+                return nameTextBox.Text?.Trim() ?? string.Empty;
+            }
+
+            return string.Empty;
+        }
+    }
+
+    private string PromptForSlotProfilePackageSelection(string[] profileNames)
+    {
+        using (Form dialog = new Form())
+        using (ListBox profileListBox = new ListBox())
+        using (Button loadButton = new Button())
+        using (Button cancelButton = new Button())
+        {
+            dialog.Text = "Load Slot Set";
+            dialog.FormBorderStyle = FormBorderStyle.FixedDialog;
+            dialog.ClientSize = new System.Drawing.Size(360, 260);
+            dialog.StartPosition = FormStartPosition.CenterScreen;
+            dialog.MaximizeBox = false;
+            dialog.MinimizeBox = false;
+            dialog.ShowInTaskbar = false;
+
+            profileListBox.Left = 12;
+            profileListBox.Top = 12;
+            profileListBox.Width = 336;
+            profileListBox.Height = 196;
+            profileListBox.Items.AddRange(profileNames);
+            if (profileListBox.Items.Count > 0)
+            {
+                profileListBox.SelectedIndex = 0;
+            }
+            profileListBox.DoubleClick += (_, __) =>
+            {
+                if (profileListBox.SelectedItem != null)
+                {
+                    dialog.DialogResult = DialogResult.OK;
+                    dialog.Close();
+                }
+            };
+
+            loadButton.Text = "Load";
+            loadButton.Left = 184;
+            loadButton.Top = 220;
+            loadButton.Width = 75;
+            loadButton.DialogResult = DialogResult.OK;
+
+            cancelButton.Text = "Cancel";
+            cancelButton.Left = 269;
+            cancelButton.Top = 220;
+            cancelButton.Width = 75;
+            cancelButton.DialogResult = DialogResult.Cancel;
+
+            dialog.Controls.Add(profileListBox);
+            dialog.Controls.Add(loadButton);
+            dialog.Controls.Add(cancelButton);
+            dialog.AcceptButton = loadButton;
+            dialog.CancelButton = cancelButton;
+
+            if (dialog.ShowDialog() == DialogResult.OK && profileListBox.SelectedItem != null)
+            {
+                return profileListBox.SelectedItem.ToString() ?? string.Empty;
+            }
+
+            return string.Empty;
+        }
     }
 
     private void DrawControllerFocusHighlight()
@@ -1294,6 +1518,12 @@ public class Visualizationizer : Game
             DrawHelpLabel("right_system", rightSystemModeButtonRect);
             DrawHelpLabel("right_prev", rightPrevDeviceButtonRect);
             DrawHelpLabel("right_next", rightNextDeviceButtonRect);
+            for (int i = 0; i < rightQuickSlotButtons.Length; i++)
+            {
+                DrawHelpLabel($"right_slot_{i + 1}", rightQuickSlotButtons[i]);
+            }
+            DrawHelpLabel("right_save_slots", rightSaveSlotProfilePackageButtonRect);
+            DrawHelpLabel("right_load_slots", rightLoadSlotProfilePackageButtonRect);
             if (rightInputDeviceButtons.Length > 0)
             {
                 DrawHelpLabel("right_inputs", GetBoundingRect(rightInputDeviceButtons));
@@ -1316,6 +1546,11 @@ public class Visualizationizer : Game
 
     private Rectangle GetBoundingRect(Rectangle[] rectangles)
     {
+        if (rectangles == null || rectangles.Length == 0)
+        {
+            return Rectangle.Empty;
+        }
+
         int minX = rectangles.Min(r => r.Left);
         int minY = rectangles.Min(r => r.Top);
         int maxX = rectangles.Max(r => r.Right);
@@ -1343,39 +1578,110 @@ public class Visualizationizer : Game
 
         int rightContentX = rightSidebarArea.X + sidePadding;
         int rightContentWidth = Math.Max(120, sidebarWidth - (sidePadding * 2));
-        int rightRowGap = Math.Max(10, (int)(18 * uiScale));
+        int rightRowGap = Math.Max(8, (int)(14 * uiScale));
+        int rightButtonGap = Math.Max(6, (int)(10 * uiScale));
         int rightStartY = rightCloseButtonRect.Bottom + Math.Max(14, (int)(24 * uiScale));
-        int rightHalfWidth = Math.Max(50, (rightContentWidth - topButtonGap) / 2);
+        int rightHalfWidth = Math.Max(50, (rightContentWidth - rightButtonGap) / 2);
         rightMicModeButtonRect = new Rectangle(rightContentX, rightStartY, rightHalfWidth, topButtonHeight);
-        rightSystemModeButtonRect = new Rectangle(rightMicModeButtonRect.Right + topButtonGap, rightStartY, rightHalfWidth, topButtonHeight);
+        rightSystemModeButtonRect = new Rectangle(rightMicModeButtonRect.Right + rightButtonGap, rightStartY, rightHalfWidth, topButtonHeight);
 
         int rightDeviceRowY = rightStartY + topButtonHeight + rightRowGap;
         rightPrevDeviceButtonRect = new Rectangle(rightContentX, rightDeviceRowY, rightHalfWidth, topButtonHeight);
-        rightNextDeviceButtonRect = new Rectangle(rightPrevDeviceButtonRect.Right + topButtonGap, rightDeviceRowY, rightHalfWidth, topButtonHeight);
+        rightNextDeviceButtonRect = new Rectangle(rightPrevDeviceButtonRect.Right + rightButtonGap, rightDeviceRowY, rightHalfWidth, topButtonHeight);
 
         int inputDeviceCount = audioManager?.InputDeviceCount ?? 0;
         if (inputDeviceCount < 0)
         {
             inputDeviceCount = 0;
         }
+
+        rightQuickSlotButtons = new Rectangle[QuickSlotCount];
         rightInputDeviceButtons = new Rectangle[inputDeviceCount];
         SyncInputDeviceIndexTextures(inputDeviceCount);
 
-        int deviceGridStartY = rightDeviceRowY + topButtonHeight + rightRowGap;
+        int quickSlotColumns = 2;
+        int quickSlotRows = Math.Max(1, (int)Math.Ceiling(QuickSlotCount / (float)quickSlotColumns));
+        int quickSlotGapX = rightButtonGap;
+        int quickSlotGapY = Math.Max(4, (int)(6 * uiScale));
+        int quickSlotButtonWidth = Math.Max(40, (rightContentWidth - quickSlotGapX) / quickSlotColumns);
+        int quickSlotButtonHeight = topButtonHeight;
+
+        int profilePackageButtonHeight = topButtonHeight;
+
         int deviceColumns = 4;
         int deviceRows = inputDeviceCount == 0 ? 0 : (int)Math.Ceiling(inputDeviceCount / (float)deviceColumns);
         int deviceButtonGap = Math.Max(4, (int)(8 * uiScale));
         int deviceButtonWidth = Math.Max(18, (rightContentWidth - ((deviceColumns - 1) * deviceButtonGap)) / deviceColumns);
         int deviceButtonHeight = topButtonHeight;
 
-        int maxDeviceAreaHeight = Math.Max(0, viewportHeight - sidePadding - deviceGridStartY);
+        int rightContentStartY = rightDeviceRowY + topButtonHeight + rightRowGap;
+        int availableRightContentHeight = Math.Max(0, viewportHeight - sidePadding - rightContentStartY);
+        int bottomSlotPadding = Math.Max(10, (int)(18 * uiScale));
+
+        const int minQuickSlotButtonHeight = 8;
+        const int minProfilePackageButtonHeight = 8;
+        while (true)
+        {
+            int quickSlotGridHeight = (quickSlotRows * quickSlotButtonHeight) + ((quickSlotRows - 1) * quickSlotGapY);
+            int bottomSectionHeight = quickSlotGridHeight + rightRowGap + profilePackageButtonHeight + bottomSlotPadding;
+            if (bottomSectionHeight <= availableRightContentHeight)
+            {
+                break;
+            }
+
+            if (quickSlotButtonHeight > minQuickSlotButtonHeight)
+            {
+                quickSlotButtonHeight--;
+                continue;
+            }
+
+            if (profilePackageButtonHeight > minProfilePackageButtonHeight)
+            {
+                profilePackageButtonHeight--;
+                continue;
+            }
+
+            if (bottomSlotPadding > 0)
+            {
+                bottomSlotPadding--;
+                continue;
+            }
+
+            break;
+        }
+
+        int quickSlotGridHeightFinal = (quickSlotRows * quickSlotButtonHeight) + ((quickSlotRows - 1) * quickSlotGapY);
+        int packageButtonsY = viewportHeight - sidePadding - bottomSlotPadding - profilePackageButtonHeight;
+        int quickSlotStartY = packageButtonsY - rightRowGap - quickSlotGridHeightFinal;
+        int packageButtonWidth = Math.Max(50, (rightContentWidth - rightButtonGap) / 2);
+        rightSaveSlotProfilePackageButtonRect = new Rectangle(rightContentX, packageButtonsY, packageButtonWidth, profilePackageButtonHeight);
+        rightLoadSlotProfilePackageButtonRect = new Rectangle(rightSaveSlotProfilePackageButtonRect.Right + rightButtonGap, packageButtonsY, packageButtonWidth, profilePackageButtonHeight);
+
+        for (int i = 0; i < QuickSlotCount; i++)
+        {
+            int row = i / quickSlotColumns;
+            int col = i % quickSlotColumns;
+            int x = rightContentX + col * (quickSlotButtonWidth + quickSlotGapX);
+            int y = quickSlotStartY + row * (quickSlotButtonHeight + quickSlotGapY);
+            rightQuickSlotButtons[i] = new Rectangle(x, y, quickSlotButtonWidth, quickSlotButtonHeight);
+        }
+
+        int deviceGridStartY = rightContentStartY;
+        int maxDeviceAreaHeight = Math.Max(0, quickSlotStartY - rightRowGap - deviceGridStartY);
         if (deviceRows > 0)
         {
-            int neededHeight = (deviceRows * deviceButtonHeight) + ((deviceRows - 1) * deviceButtonGap);
-            if (neededHeight > maxDeviceAreaHeight)
+            if (maxDeviceAreaHeight <= 0)
             {
-                int adjustedHeight = (maxDeviceAreaHeight - ((deviceRows - 1) * deviceButtonGap)) / deviceRows;
-                deviceButtonHeight = Math.Max(8, adjustedHeight);
+                deviceButtonHeight = 0;
+            }
+            else
+            {
+                int neededHeight = (deviceRows * deviceButtonHeight) + ((deviceRows - 1) * deviceButtonGap);
+                if (neededHeight > maxDeviceAreaHeight)
+                {
+                    int adjustedHeight = (maxDeviceAreaHeight - ((deviceRows - 1) * deviceButtonGap)) / deviceRows;
+                    deviceButtonHeight = Math.Max(1, adjustedHeight);
+                }
             }
         }
 
@@ -1385,7 +1691,7 @@ public class Visualizationizer : Game
             int col = i % deviceColumns;
             int x = rightContentX + col * (deviceButtonWidth + deviceButtonGap);
             int y = deviceGridStartY + row * (deviceButtonHeight + deviceButtonGap);
-            rightInputDeviceButtons[i] = new Rectangle(x, y, deviceButtonWidth, deviceButtonHeight);
+            rightInputDeviceButtons[i] = new Rectangle(x, y, deviceButtonWidth, Math.Max(0, deviceButtonHeight));
         }
 
         int sliderX = sidePadding;
@@ -1490,13 +1796,13 @@ public class Visualizationizer : Game
         sliderTexture5 = CreateColorTexture(sliderWidth, sliderHeight, Color.Gray);
         modeButtonTexture = CreateColorTexture(modeButtonWidth, modeButtonHeight, Color.White);
         colorButtonTexture = CreateColorTexture(colorButtonSize, colorButtonSize, Color.White);
+
         InitializeHelpOverlayTextures();
     }
 
     private void HandleProfileHotkeys(KeyboardState keyboardState)
     {
-        bool controlDown = keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.LeftControl)
-            || keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.RightControl);
+        bool controlDown = IsControlModifierDown(keyboardState);
 
         var quickSlots = new (Microsoft.Xna.Framework.Input.Keys key, int slot)[]
         {
@@ -1539,6 +1845,7 @@ public class Visualizationizer : Game
     {
         SyncAppStateFromRuntime();
         profileManager.SaveSlot(slot, appState);
+        RefreshQuickSlotProfileFlags();
     }
 
     private void LoadProfileFromSlot(int slot)
@@ -1550,6 +1857,87 @@ public class Visualizationizer : Game
 
         ApplyAppState(loadedState);
         SyncAppStateFromRuntime();
+    }
+
+    private void SaveSlotProfilePackageWithPrompt()
+    {
+        if (isProfileDialogOpen)
+        {
+            return;
+        }
+
+        isProfileDialogOpen = true;
+        suppressRightPanelActionsUntilMouseRelease = true;
+        try
+        {
+            string profileName = PromptForSlotProfilePackageName();
+            if (string.IsNullOrWhiteSpace(profileName))
+            {
+                return;
+            }
+
+            if (!profileManager.SaveNamedSlotProfile(profileName))
+            {
+                System.Windows.Forms.MessageBox.Show("Failed to save slot package profile.", "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+        finally
+        {
+            isProfileDialogOpen = false;
+            previousMouseState = Mouse.GetState();
+            previousGamePadState = GamePad.GetState(PlayerIndex.One);
+        }
+    }
+
+    private void LoadSlotProfilePackageWithPrompt()
+    {
+        if (isProfileDialogOpen)
+        {
+            return;
+        }
+
+        isProfileDialogOpen = true;
+        suppressRightPanelActionsUntilMouseRelease = true;
+        try
+        {
+            string[] profileNames = profileManager.ListNamedSlotProfiles();
+            if (profileNames.Length == 0)
+            {
+                System.Windows.Forms.MessageBox.Show("No saved slot package profiles were found.", "Load Slot Set", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            string selectedProfile = PromptForSlotProfilePackageSelection(profileNames);
+            if (string.IsNullOrWhiteSpace(selectedProfile))
+            {
+                return;
+            }
+
+            if (!profileManager.TryLoadNamedSlotProfile(selectedProfile))
+            {
+                System.Windows.Forms.MessageBox.Show("Failed to load slot package profile.", "Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            RefreshQuickSlotProfileFlags();
+        }
+        finally
+        {
+            isProfileDialogOpen = false;
+            previousMouseState = Mouse.GetState();
+            previousGamePadState = GamePad.GetState(PlayerIndex.One);
+        }
+    }
+
+    private static bool IsControlModifierDown()
+    {
+        return IsControlModifierDown(Keyboard.GetState());
+    }
+
+    private static bool IsControlModifierDown(KeyboardState keyboardState)
+    {
+        return keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.LeftControl)
+            || keyboardState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.RightControl);
     }
 
     private void SyncAppStateFromRuntime()
@@ -1564,8 +1952,6 @@ public class Visualizationizer : Game
         appState.LoadedMediaPath = loadedMediaPath;
         appState.SetSvgPosition(svgPosition);
         appState.FftLength = audioManager.FftLength;
-        appState.AudioDeviceNumber = audioManager.SelectedInputDevice;
-        appState.AudioCaptureSource = audioManager.CaptureSource.ToString();
     }
 
     private void ApplyAppState(AppState state)
@@ -1591,13 +1977,6 @@ public class Visualizationizer : Game
             audioManager.UpdateFFTLength(state.FftLength);
             visualizer.UpdateFFTBinCount(state.FftLength / 2);
         }
-
-        AudioCaptureSource requestedSource = AudioCaptureSource.Microphone;
-        if (!string.IsNullOrWhiteSpace(state.AudioCaptureSource) && Enum.TryParse(state.AudioCaptureSource, out AudioCaptureSource parsedSource))
-        {
-            requestedSource = parsedSource;
-        }
-        audioManager.ApplySourceAndDevice(requestedSource, state.AudioDeviceNumber);
 
         visualizer.UpdateFrequencyCutoff(sliderValue2);
         float scaledValue = 1.0f + (100f - 1.0f) * sliderValue;

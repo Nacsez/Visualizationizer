@@ -13,8 +13,6 @@ public class AppState
     public float SvgPositionX { get; set; }
     public float SvgPositionY { get; set; }
     public int FftLength { get; set; } = 64;
-    public int AudioDeviceNumber { get; set; } = 0;
-    public string AudioCaptureSource { get; set; } = "Microphone";
 
     public Vector2 GetSvgPosition()
     {
