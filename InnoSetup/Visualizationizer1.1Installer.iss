@@ -16,8 +16,8 @@ OutputBaseFilename={#MyOutputBaseFilename}
 Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=admin
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
 
 [Dirs]
@@ -37,7 +37,7 @@ Name: "{group}\Uninstall {#MyAppInstallDirName}"; Filename: "{uninstallexe}"
 Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Additional tasks:"; Flags: unchecked
 
 [Registry]
-Root: HKCU; Subkey: "Software\Visualizationizer\1.1"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: createvalueifdoesntexist
+Root: HKLM; Subkey: "Software\Visualizationizer\1.1"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: createvalueifdoesntexist
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
